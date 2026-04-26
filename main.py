@@ -5,7 +5,6 @@ from flask import Flask
 from threading import Thread
 import os
 
-# 1. CONFIGURACIÓN DEL SERVIDOR WEB (Para que Render no lo apague)
 app = Flask('')
 
 @app.route('/')
@@ -19,10 +18,9 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# 2. CONFIGURACIÓN DEL BOT
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_name="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
@@ -33,7 +31,6 @@ async def on_ready():
     except Exception as e:
         print(e)
 
-# 3. COMANDO DE TICKETS
 @bot.tree.command(name="setup_tickets", description="Configura el sistema de tickets")
 async def setup_tickets(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -46,7 +43,6 @@ async def setup_tickets(interaction: discord.Interaction):
     view.add_item(button)
     await interaction.response.send_message(embed=embed, view=view)
 
-# 4. ENCENDER EL BOT USANDO LA CAJA FUERTE
 keep_alive()
-token = os.getenv('DISCORD_TOKEN') # Aquí busca el token que pusiste en Render
+token = os.getenv('DISCORD_TOKEN')
 bot.run(token)
