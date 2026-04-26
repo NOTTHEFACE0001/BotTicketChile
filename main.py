@@ -1,8 +1,29 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+import os
+from flask import Flask
+from threading import Thread
 
-# Tu configuración de seguridad
+# --- CONFIGURACIÓN DE FLASK PARA UPTIME ROBOT ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    # Esta es la página que UptimeRobot visitará. Si esto carga, no hay 404.
+    return "¡Bot Ticket Chile está activo 24/7! 🎫"
+
+def run():
+    # Render y Railway asignan un puerto dinámico, esto lo captura:
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# --- CONFIGURACIÓN DEL BOT ---
+# ¡OJO! He dejado tu token, pero si se vuelve a caer, dale a "Reset Token" en Discord.
 TOKEN = "MTQ5ODA4MzQzNzE3MzYzOTMw.G8txBE.suZ_31tRNEYTtC7YApn5T9V7lIeEuKDJ_IS2hQ"
 
 intents = discord.Intents.all()
@@ -33,7 +54,7 @@ class TicketView(discord.ui.View):
         )
         
         view_close = discord.ui.View(timeout=None)
-        btn_close = discord.ui.button(label="Cerrar Ticket 🔒", style=discord.ButtonStyle.red)
+        btn_close = discord.ui.Button(label="Cerrar Ticket 🔒", style=discord.ButtonStyle.red, custom_id="btn_close_ticket")
         
         async def close_callback(inter):
             await inter.channel.delete()
@@ -65,4 +86,10 @@ async def on_ready():
     bot.add_view(TicketView())
     print(f'✅ {bot.user} está en línea para Chile RP')
 
-bot.run(TOKEN)
+# --- EJECUCIÓN ---
+if __name__ == "__main__":
+    keep_alive()  # Esto crea la web para que el robot la vea
+    try:
+        bot.run(TOKEN)
+    except Exception as e:
+        print(f"Error al arrancar el bot: {e}")
