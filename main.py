@@ -5,11 +5,12 @@ from flask import Flask
 from threading import Thread
 import os
 
+# SERVIDOR WEB PARA MANTENERLO VIVO
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "¡Bot Ticket Chile está activo 24/7! 🎫"
+    return "¡Bot de Encuestas activo! 📊"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -18,6 +19,7 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
+# CONFIGURACIÓN DEL BOT
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -31,17 +33,24 @@ async def on_ready():
     except Exception as e:
         print(e)
 
-@bot.tree.command(name="setup_tickets", description="Configura el sistema de tickets")
-async def setup_tickets(interaction: discord.Interaction):
+# COMANDO DE ENCUESTA
+@bot.tree.command(name="encuesta", description="Crea una encuesta rápida")
+@app_commands.describe(pregunta="¿Qué quieres preguntar?", opcion1="Primera opción", opcion2="Segunda opción")
+async def encuesta(interaction: discord.Interaction, pregunta: str, opcion1: str, opcion2: str):
     embed = discord.Embed(
-        title="🎫 Soporte de Chile RP",
-        description="Haz clic en el botón de abajo para abrir un ticket de asistencia.",
-        color=discord.Color.blue()
+        title="📊 NUEVA ENCUESTA",
+        description=f"**{pregunta}**\n\n1️⃣ {opcion1}\n2️⃣ {opcion2}",
+        color=discord.Color.green()
     )
-    view = discord.ui.View()
-    button = discord.ui.Button(label="Abrir Ticket", style=discord.ButtonStyle.primary, custom_id="ticket_btn")
-    view.add_item(button)
-    await interaction.response.send_message(embed=embed, view=view)
+    embed.set_footer(text="Vota reaccionando abajo")
+    
+    # Enviar el mensaje
+    await interaction.response.send_message(embed=embed)
+    
+    # Obtener el mensaje enviado para ponerle las reacciones
+    mensaje = await interaction.original_response()
+    await mensaje.add_reaction("1️⃣")
+    await mensaje.add_reaction("2️⃣")
 
 keep_alive()
 token = os.getenv('DISCORD_TOKEN')
