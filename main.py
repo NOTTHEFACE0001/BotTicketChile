@@ -9,7 +9,7 @@ import os
 app = Flask('')
 @app.route('/')
 def home():
-    return "¡Bot Chile RP Multiusos Activo! 📊✅❌"
+    return "¡Bot Chile RP Pro Activo! 📊✅❌"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -35,36 +35,47 @@ async def on_ready():
 # 3. COMANDO DE ENCUESTA
 @bot.tree.command(name="encuesta", description="Crea una encuesta rápida")
 async def encuesta(interaction: discord.Interaction, pregunta: str, opcion1: str, opcion2: str):
-    embed = discord.Embed(title="📊 ENCUESTA", description=f"**{pregunta}**\n\n1️⃣ {opcion1}\n2️⃣ {opcion2}", color=discord.Color.green())
+    embed = discord.Embed(title="📊 SISTEMA DE ENCUESTAS", description=f"**{pregunta}**\n\n1️⃣ {opcion1}\n2️⃣ {opcion2}", color=discord.Color.from_rgb(46, 204, 113))
+    embed.set_footer(text="Tu opinión es importante para Chile RP")
     await interaction.response.send_message(embed=embed)
     mensaje = await interaction.original_response()
     await mensaje.add_reaction("1️⃣")
     await mensaje.add_reaction("2️⃣")
 
-# 4. COMANDO PARA ABRIR SERVIDOR
-@bot.tree.command(name="abrir_servidor", description="Anuncia la apertura del servidor")
+# 4. COMANDO APERTURA (DISEÑO PROFESIONAL)
+@bot.tree.command(name="abrir_servidor", description="Anuncia la apertura profesional del servidor")
 async def abrir_servidor(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="✅ SERVIDOR ABIERTO",
-        description="¡El servidor de **Chile RP** ya está disponible!\n\n¡Entra ya y disfruta del mejor rol!",
-        color=discord.Color.blue()
+        title="✨ ¡ESTAMOS EN LÍNEA! ✨",
+        description="El servidor de **Chile RP** ha abierto sus puertas. ¡Prepárate para la mejor experiencia de rol!",
+        color=discord.Color.from_rgb(52, 152, 219) # Azul elegante
     )
+    
+    embed.add_field(name="🎮 Estado", value="🟢 **Online**", inline=True)
+    embed.add_field(name="📍 Mapa", value="Chile Continental", inline=True)
+    embed.add_field(name="📢 Aviso", value="Recuerda seguir las reglas de rol en todo momento.", inline=False)
+    
     embed.set_image(url="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJueW94bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7TKMGpxxcaOXYT60/giphy.gif")
+    embed.set_footer(text="Administración de Chile RP", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+    
     await interaction.response.send_message(content="@everyone", embed=embed)
 
-# 5. COMANDO PARA CERRAR SERVIDOR
-@bot.tree.command(name="cerrar_servidor", description="Anuncia el cierre del servidor")
+# 5. COMANDO CIERRE (DISEÑO PROFESIONAL)
+@bot.tree.command(name="cerrar_servidor", description="Anuncia el cierre profesional del servidor")
 async def cerrar_servidor(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="❌ SERVIDOR CERRADO",
-        description=(
-            "El servidor ha cerrado sus puertas por hoy.\n\n"
-            "**¡Gracias a todos por participar!**\n"
-            "Nos vemos en la próxima jornada de rol."
-        ),
-        color=discord.Color.red()
+        title="🌙 ¡FIN DE LA JORNADA! 🌙",
+        description="El servidor de **Chile RP** ha finalizado sus operaciones por hoy.",
+        color=discord.Color.from_rgb(231, 76, 60) # Rojo elegante
     )
+    
+    embed.add_field(name="🎮 Estado", value="🔴 **Offline**", inline=True)
+    embed.add_field(name="⏰ Regreso", value="Mañana a la hora de siempre", inline=True)
+    embed.add_field(name="💬 Soporte", value="Los tickets de soporte siguen abiertos si necesitas ayuda.", inline=False)
+    
     embed.set_image(url="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2ZicW9ueGZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7TKVUn7iM8FMEU24/giphy.gif")
+    embed.set_footer(text="Gracias por preferir Chile RP", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+    
     await interaction.response.send_message(content="@everyone", embed=embed)
 
 # 6. ENCENDER BOT
