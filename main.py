@@ -4,81 +4,127 @@ from discord import app_commands
 from flask import Flask
 from threading import Thread
 import os
+import datetime
 
 # 1. SERVIDOR WEB PARA RENDER
 app = Flask('')
 @app.route('/')
-def home():
-    return "¡Bot Chile RP Pro Activo! 📊✅❌"
+def home(): return "Sistema de Justicia Chile RP Activo ⚖️"
 
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
+def run(): app.run(host='0.0.0.0', port=8080)
+def keep_alive(): Thread(target=run).start()
 
 # 2. CONFIGURACIÓN DEL BOT
 intents = discord.Intents.default()
+intents.members = True 
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# BASE DE DATOS TEMPORAL
+sanciones_db = {} 
+
 @bot.event
 async def on_ready():
-    print(f'✅ Conectado como {bot.user.name}')
-    try:
-        synced = await bot.tree.sync()
-        print(f"✅ Sincronizados {len(synced)} comandos.")
-    except Exception as e:
-        print(e)
+    print(f'✅ Sistema de Justicia Conectado como {bot.user.name}')
+    await bot.tree.sync()
 
-# 3. COMANDO DE ENCUESTA
-@bot.tree.command(name="encuesta", description="Crea una encuesta rápida")
-async def encuesta(interaction: discord.Interaction, pregunta: str, opcion1: str, opcion2: str):
-    embed = discord.Embed(title="📊 SISTEMA DE ENCUESTAS", description=f"**{pregunta}**\n\n1️⃣ {opcion1}\n2️⃣ {opcion2}", color=discord.Color.from_rgb(46, 204, 113))
-    embed.set_footer(text="Tu opinión es importante para Chile RP")
+# --- COMANDO ÚNICO DE SANCIÓN PROFESIONAL ---
+
+@bot.tree.command(name="sancionar", description="Menú completo de sanciones")
+@app_commands.choices(accion=[
+    app_commands.Choice(name="Advertencia (Warn)", value="warn"),
+    app_commands.Choice(name="Mutear (Timeout)", value="mute"),
+    app_commands.Choice(name="Expulsar (Kick)", value="kick"),
+    app_commands.Choice(name="Lista Negra (Blacklist/Ban)", value="ban")
+])
+async def sancionar(
+    interaction: discord.Interaction, 
+    usuario: discord.Member, 
+    accion: str, 
+    motivo: str, 
+    pruebas: str, 
+    tiempo_minutos: int = 0
+):
+    user_id = str(usuario.id)
+    if user_id not in sanciones_db:
+        sanciones_db[user_id] = []
+
+    embed = discord.Embed(title="🛡️ REGISTRO DE SANCIÓN", color=discord.Color.dark_red())
+    detalles_sancion = ""
+
+    # LÓGICA DE CADA ACCIÓN
+    if accion == "warn":
+        detalles_sancion = "⚠️ ADVERTENCIA"
+        embed.color = discord.Color.gold()
+        
+    elif accion == "mute":
+        if tiempo_minutos > 0:
+            tiempo = datetime.timedelta(minutes=tiempo_minutos)
+            await usuario.timeout(tiempo, reason=motivo)
+            detalles_sancion = f"🔇 MUTE ({tiempo_minutos} min)"
+        else:
+            await interaction.response.send_message("❌ Debes poner un tiempo en minutos para mutear.", ephemeral=True)
+            return
+
+    elif accion == "kick":
+        await usuario.kick(reason=motivo)
+        detalles_sancion = "👢 EXPULSIÓN (KICK)"
+
+    elif accion == "ban":
+        await usuario.ban(reason=motivo)
+        detalles_sancion = "🚫 BLACKLIST (BAN)"
+
+    # GUARDAR EN HISTORIAL
+    sanciones_db[user_id].append({
+        "tipo": detalles_sancion,
+        "motivo": motivo,
+        "pruebas": pruebas,
+        "mod": interaction.user.name,
+        "fecha": datetime.datetime.now().strftime("%d/%m/%Y")
+    })
+
+    # CONFIGURAR EMBED PARA EL CANAL
+    embed.add_field(name="👤 Usuario Sancionado", value=usuario.mention, inline=True)
+    embed.add_field(name="⚖️ Acción Aplicada", value=f"**{detalles_sancion}**", inline=True)
+    embed.add_field(name="📝 Motivo del Rol", value=motivo, inline=False)
+    embed.add_field(name="📸 Pruebas/Evidencia", value=pruebas, inline=False)
+    embed.set_footer(text=f"Moderador: {interaction.user.name}")
+    embed.set_thumbnail(url=usuario.display_avatar.url)
+
     await interaction.response.send_message(embed=embed)
-    mensaje = await interaction.original_response()
-    await mensaje.add_reaction("1️⃣")
-    await mensaje.add_reaction("2️⃣")
 
-# 4. COMANDO APERTURA (DISEÑO PROFESIONAL)
-@bot.tree.command(name="abrir_servidor", description="Anuncia la apertura profesional del servidor")
+# --- COMANDOS DE CONSULTA Y LIMPIEZA ---
+
+@bot.tree.command(name="ver_historial", description="Ver expediente de un usuario")
+async def ver_historial(interaction: discord.Interaction, usuario: discord.Member):
+    user_id = str(usuario.id)
+    if user_id not in sanciones_db or not sanciones_db[user_id]:
+        await interaction.response.send_message(f"✅ El usuario {usuario.name} tiene el expediente limpio.")
+        return
+
+    embed = discord.Embed(title=f"📋 Expediente de {usuario.name}", color=discord.Color.blue())
+    for i, s in enumerate(sanciones_db[user_id], 1):
+        embed.add_field(
+            name=f"Sanción #{i} - {s['fecha']}", 
+            value=f"**Tipo:** {s['tipo']}\n**Motivo:** {s['motivo']}\n**Pruebas:** {s['pruebas']}\n**Mod:** {s['mod']}", 
+            inline=False
+        )
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="borrar_historial", description="Elimina todas las sanciones de un usuario")
+async def borrar_historial(interaction: discord.Interaction, usuario: discord.Member):
+    sanciones_db[str(usuario.id)] = []
+    await interaction.response.send_message(f"🧹 Historial de {usuario.mention} borrado correctamente.")
+
+# --- COMANDOS DE ESTADO ---
+@bot.tree.command(name="abrir_servidor", description="Anuncio de apertura")
 async def abrir_servidor(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="✨ ¡ESTAMOS EN LÍNEA! ✨",
-        description="El servidor de **Chile RP** ha abierto sus puertas. ¡Prepárate para la mejor experiencia de rol!",
-        color=discord.Color.from_rgb(52, 152, 219) # Azul elegante
-    )
-    
-    embed.add_field(name="🎮 Estado", value="🟢 **Online**", inline=True)
-    embed.add_field(name="📍 Mapa", value="Chile Continental", inline=True)
-    embed.add_field(name="📢 Aviso", value="Recuerda seguir las reglas de rol en todo momento.", inline=False)
-    
-    embed.set_image(url="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJueW94bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7TKMGpxxcaOXYT60/giphy.gif")
-    embed.set_footer(text="Administración de Chile RP", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
-    
-    await interaction.response.send_message(content="@everyone", embed=embed)
+    await interaction.response.send_message(content="@everyone", embed=discord.Embed(title="✅ SERVIDOR ABIERTO", color=discord.Color.green()))
 
-# 5. COMANDO CIERRE (DISEÑO PROFESIONAL)
-@bot.tree.command(name="cerrar_servidor", description="Anuncia el cierre profesional del servidor")
+@bot.tree.command(name="cerrar_servidor", description="Anuncio de cierre")
 async def cerrar_servidor(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🌙 ¡FIN DE LA JORNADA! 🌙",
-        description="El servidor de **Chile RP** ha finalizado sus operaciones por hoy.",
-        color=discord.Color.from_rgb(231, 76, 60) # Rojo elegante
-    )
-    
-    embed.add_field(name="🎮 Estado", value="🔴 **Offline**", inline=True)
-    embed.add_field(name="⏰ Regreso", value="Mañana a la hora de siempre", inline=True)
-    embed.add_field(name="💬 Soporte", value="Los tickets de soporte siguen abiertos si necesitas ayuda.", inline=False)
-    
-    embed.set_image(url="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2ZicW9ueGZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4bmZ4JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7TKVUn7iM8FMEU24/giphy.gif")
-    embed.set_footer(text="Gracias por preferir Chile RP", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
-    
-    await interaction.response.send_message(content="@everyone", embed=embed)
+    await interaction.response.send_message(content="@everyone", embed=discord.Embed(title="❌ SERVIDOR CERRADO", color=discord.Color.red()))
 
-# 6. ENCENDER BOT
+# 3. ENCENDER
 keep_alive()
-token = os.getenv('DISCORD_TOKEN')
-bot.run(token)
+bot.run(os.getenv('DISCORD_TOKEN'))
