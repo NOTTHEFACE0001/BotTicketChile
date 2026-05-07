@@ -5,6 +5,7 @@ from flask import Flask
 from threading import Thread
 import os
 import datetime
+import random # Movido aquí para que funcione en todo el código
 
 # --- 1. MANTENER ONLINE ---
 app = Flask('')
@@ -105,9 +106,46 @@ async def encuesta(interaction: discord.Interaction, pregunta: str, opcion1: str
     await m.add_reaction("1️⃣")
     await m.add_reaction("2️⃣")
 
-# --- 6. REGISTRO DNI ---
-@bot.tree.command(name="registrar_dni", description="Saca tu RUT")
-async def registrar(interaction: discord.Interaction, nombre: str, apellido: str, rut: str, edad: int):
+# --- 6. REGISTRO DNI / RUT CHILE RP (COMANDO NUEVO) ---
+@bot.tree.command(name="sacar_rut", description="Genera tu carnet de identidad chileno oficial")
+@app_commands.choices(estado_civil=[
+    app_commands.Choice(name="SOLTERO/A", value="SOLTERO/A"),
+    app_commands.Choice(name="CASADO/A", value="CASADO/A")
+])
+async def rut_chile(
+    interaction: discord.Interaction, 
+    nombre: str, 
+    apellido: str, 
+    rut: str, 
+    sangre: str, 
+    ocupacion: str, 
+    estado_civil: str, 
+    lugar_nacimiento: str, 
+    fecha_nacimiento: str # Formato DD/MM/AAAA
+):
+    try:
+        # Cálculo de edad
+        nacimiento = datetime.datetime.strptime(fecha_nacimiento, "%d/%m/%Y")
+        hoy = datetime.datetime.now()
+        edad = hoy.year - nacimiento.year - ((hoy.month, hoy.day) < (nacimiento.month, nacimiento.day))
+
+        embed = discord.Embed(title="🇨🇱 REGISTRO CIVIL - CHILE RP", color=0xFF0000)
+        embed.add_field(name="👤 NOMBRE COMPLETO", value=f"{nombre} {apellido}".upper(), inline=False)
+        embed.add_field(name="🆔 RUT", value=rut, inline=True)
+        embed.add_field(name="🩸 GRUPO SANGUÍNEO", value=sangre.upper(), inline=True)
+        embed.add_field(name="💼 PROFESIÓN / OCUPACIÓN", value=ocupacion.upper(), inline=True)
+        embed.add_field(name="💍 ESTADO CIVIL", value=estado_civil, inline=True)
+        embed.add_field(name="📍 LUGAR DE NACIMIENTO", value=lugar_nacimiento.upper(), inline=True)
+        embed.add_field(name="🎂 EDAD CALCULADA", value=f"{edad} AÑOS", inline=True)
+        embed.set_footer(text="Documento Nacional de Identidad - Chile RP")
+        
+        await interaction.response.send_message(embed=embed)
+    except:
+        await interaction.response.send_message("❌ Error: Usa el formato de fecha DD/MM/AAAA (Ej: 25/12/1995)")
+
+# Mantenemos tu comando viejo por si acaso, pero el de arriba es el completo
+@bot.tree.command(name="registrar_dni", description="Saca tu RUT simple")
+async def registrar_viejo(interaction: discord.Interaction, nombre: str, apellido: str, rut: str, edad: int):
     user_id = str(interaction.user.id)
     dni_db[user_id] = {"nombre": nombre.upper(), "apellido": apellido.upper(), "rut": rut, "edad": edad}
     embed = discord.Embed(title="📇 REGISTRO CIVIL: DNI", color=0xffffff)
@@ -115,6 +153,5 @@ async def registrar(interaction: discord.Interaction, nombre: str, apellido: str
     embed.add_field(name="🆔 RUT:", value=rut)
     await interaction.response.send_message(embed=embed)
 
-import random # Necesario para generar IDs de sanción
 keep_alive()
 bot.run(os.getenv('DISCORD_TOKEN'))
