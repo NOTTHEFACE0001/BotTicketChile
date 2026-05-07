@@ -153,5 +153,42 @@ async def registrar_viejo(interaction: discord.Interaction, nombre: str, apellid
     embed.add_field(name="🆔 RUT:", value=rut)
     await interaction.response.send_message(embed=embed)
 
+# --- 🇨🇱 IDENTIFICACIÓN CHILE RP (SÓLO AGREGA ESTO) ---
+@bot.tree.command(name="sacar_rut", description="Genera tu carnet de identidad chileno")
+@app_commands.choices(estado_civil=[
+    app_commands.Choice(name="SOLTERO/A", value="SOLTERO/A"),
+    app_commands.Choice(name="CASADO/A", value="CASADO/A")
+])
+async def rut_chile(
+    interaction: discord.Interaction, 
+    nombre: str, 
+    apellido: str, 
+    rut: str, 
+    sangre: str, 
+    ocupacion: str, 
+    estado_civil: str, 
+    lugar_nacimiento: str, 
+    fecha_nacimiento: str # Formato DD/MM/AAAA
+):
+    try:
+        # Cálculo automático de edad
+        nacimiento = datetime.strptime(fecha_nacimiento, "%d/%m/%Y")
+        hoy = datetime.now()
+        edad = hoy.year - nacimiento.year - ((hoy.month, hoy.day) < (nacimiento.month, nacimiento.day))
+
+        embed = discord.Embed(title="🇨🇱 REGISTRO CIVIL - CHILE RP", color=0xFF0000)
+        embed.add_field(name="👤 NOMBRE COMPLETO", value=f"{nombre} {apellido}".upper(), inline=False)
+        embed.add_field(name="🆔 RUT", value=rut, inline=True)
+        embed.add_field(name="🩸 GRUPO SANGUÍNEO", value=sangre.upper(), inline=True)
+        embed.add_field(name="💼 PROFESIÓN / OCUPACIÓN", value=ocupacion.upper(), inline=True)
+        embed.add_field(name="💍 ESTADO CIVIL", value=estado_civil, inline=True)
+        embed.add_field(name="📍 LUGAR DE NACIMIENTO", value=lugar_nacimiento.upper(), inline=True)
+        embed.add_field(name="🎂 EDAD", value=f"{edad} AÑOS", inline=True)
+        embed.set_footer(text="Documento Nacional de Identidad - Chile RP")
+        
+        await interaction.response.send_message(embed=embed)
+    except:
+        await interaction.response.send_message("❌ Error: Pon la fecha como DD/MM/AAAA (ej: 20/10/2000)")
+
 keep_alive()
 bot.run(os.getenv('DISCORD_TOKEN'))
