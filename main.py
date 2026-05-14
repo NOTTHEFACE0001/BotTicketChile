@@ -5,6 +5,25 @@ import datetime
 import random
 import os
 
+from flask import Flask
+from threading import Thread
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot Online"
+
+def run():
+  app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# Llama a esta función justo antes del bot.run()
+keep_alive()
+
 # ==========================================
 # 1. CONFIGURACIÓN DEL BOT
 # ==========================================
