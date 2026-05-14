@@ -98,8 +98,8 @@ async def encuesta(interaction: discord.Interaction, pregunta: str):
 # 5. EJECUCIÓN
 # ==========================================
 # Reemplaza el Token o usa variables de entorno
-token = os.environ.get('TOKEN') 
+token = os.environ.get('MTQ5ODAwNDM0MzcxNzM2MzkzMw.G2icV9.WWk4EYtaz7tUbKqVElBB4oVo1v2a38DXkzo-9g') 
 if token:
-    bot.run(token)
+    bot.run(TOKEN)
 else:
     print("Error: No se encontró el TOKEN en las variables de entorno.")
