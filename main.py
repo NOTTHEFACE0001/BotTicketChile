@@ -123,7 +123,7 @@ async def apelar(interaction: discord.Interaction, tipo_apelacion: str, motivo: 
     else:
         await interaction.response.send_message("✅ Apelación enviada (Staff: cread canal 'apelaciones-staff').", embed=embed)
 
-# --- 📢 ENTORNO (DINÁMICO) ---
+# --- 📢 ENTORNO (LÍNEA ARREGLADA) ---
 @bot.tree.command(name="entorno", description="Reportar situación de entorno")
 @app_commands.choices(tiempo=[
     app_commands.Choice(name="🕒 Ahora mismo", value="Ahora mismo"),
@@ -132,7 +132,7 @@ async def apelar(interaction: discord.Interaction, tipo_apelacion: str, motivo: 
 ])
 async def entorno(interaction: discord.Interaction, suceso: str, lugar: str, tiempo: app_commands.Choice[str]):
     embed = discord.Embed(title="✨ AVISO DE ENTORNO", color=0x2b2d31)
-    embed.add_field(name="🚨 Suceso", value=f"```{suceso.upper()}
+    embed.add_field(name="🚨 Suceso", value=f"```\n{suceso.upper()}\n
 ```", inline=False)
     embed.add_field(name="📍 Ubicación", value=f"`{lugar.upper()}`", inline=True)
     embed.add_field(name="⏳ Momento", value=f"`{tiempo.value}`", inline=True)
