@@ -59,12 +59,13 @@ async def fichar_sujeto(interaction: discord.Interaction, ciudadano: discord.Mem
 @tree.command(name="ver_antecedentes", description="Ver historial policial")
 async def ver_antecedentes(interaction: discord.Interaction, ciudadano: discord.Member):
     user_id = str(ciudadano.id)
-    # CORRECCIÓN LÍNEA 74: Usamos formato simple para evitar el error de la foto 6eebf477-1438-4990-a5be-63cd9df7adc1
     historial = antecedentes_db.get(user_id, "Sin antecedentes registrados.")
     
     embed = discord.Embed(title=f"📁 ARCHIVO POLICIAL: {ciudadano.name}", color=0xff0000)
-    embed.add_field(name="Historial de Delitos", value=f"```\n{historial}\n
-```", inline=False)
+    
+    # Esto es lo que estaba roto: lo dejamos simple para que funcione
+    embed.add_field(name="Historial de Delitos", value=historial, inline=False)
+    
     await interaction.response.send_message(embed=embed)
 
 # ==========================================
