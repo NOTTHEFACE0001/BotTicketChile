@@ -95,11 +95,15 @@ async def encuesta(interaction: discord.Interaction, pregunta: str):
     await msg.add_reaction("❌")
 
 # ==========================================
-# 5. EJECUCIÓN
+# 5. EJECUCIÓN (CORREGIDO)
 # ==========================================
-# Reemplaza el Token o usa variables de entorno
-token = os.environ.get('MTQ5ODAwNDM0MzcxNzM2MzkzMw.G2icV9.WWk4EYtaz7tUbKqVElBB4oVo1v2a38DXkzo-9g') 
-if token:
-    bot.run(TOKEN)
+import os
+
+# Buscamos la variable que configuraste en Render
+token_bot = os.environ.get('TOKEN')
+
+if token_bot:
+    print("¡TOKEN encontrado! Iniciando sesión...")
+    bot.run(token_bot)
 else:
-    print("Error: No se encontró el TOKEN en las variables de entorno.")
+    print("Error: No se encontró la variable 'TOKEN' en el panel de Render.")
