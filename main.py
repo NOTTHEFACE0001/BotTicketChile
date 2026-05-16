@@ -1,128 +1,289 @@
 import discord
-from discord import app_commands
 from discord.ext import commands
-import datetime
-import random
-import os
-
+from discord import app_commands
 from flask import Flask
 from threading import Thread
+import datetime
+import random
 
+# --- CONFIGURACIÓN DEL MONITOR (KEEP ALIVE) ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot Online"
+    return "Bot de Gran Chile RP está en línea 🟢"
 
 def run():
-  app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# Llama a esta función justo antes del bot.run()
+# --- CONFIGURACIÓN DEL BOT ---
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+LOGO_URL = "https://i.imgur.com/XXXXXXX.png"  # <- Reemplaza con la URL real del logo
+
+historial_sanciones = {}
+
+# ─────────────────────────────────────────────
+#  FUNCIONES AUXILIARES
+# ─────────────────────────────────────────────
+
+def generar_rut() -> str:
+    numero = random.randint(5_000_000, 25_000_000)
+    dv = calcular_dv(numero)
+    return f"{numero:,}".replace(",", ".") + "-" + str(dv)
+
+def calcular_dv(rut: int) -> str:
+    reversed_digits = [int(d) for d in reversed(str(rut))]
+    factors = [2, 3, 4, 5, 6, 7]
+    total = sum(d * factors[i % 6] for i, d in enumerate(reversed_digits))
+    remainder = 11 - (total % 11)
+    if remainder == 11:
+        return "0"
+    elif remainder == 10:
+        return "K"
+    return str(remainder)
+
+def calcular_edad(fecha_nacimiento: str) -> str:
+    try:
+        nacimiento = datetime.datetime.strptime(fecha_nacimiento, "%d/%m/%Y")
+        hoy = datetime.datetime.now()
+        edad = hoy.year - nacimiento.year - (
+            (hoy.month, hoy.day) < (nacimiento.month, nacimiento.day)
+        )
+        return str(edad)
+    except ValueError:
+        return "INVALIDA"
+
+# ─────────────────────────────────────────────
+#  EVENTO ON_READY
+# ─────────────────────────────────────────────
+
+@bot.event
+async def on_ready():
+    print(f'✅ Conectado como {bot.user.name}')
+    await bot.change_presence(activity=discord.Game(name="Moderando Gran Chile RP 🇨🇱"))
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ {len(synced)} slash command(s) sincronizados.")
+    except Exception as e:
+        print(f"❌ Error al sincronizar: {e}")
+
+# ─────────────────────────────────────────────
+#  SLASH COMMAND: /dni
+# ─────────────────────────────────────────────
+
+@bot.tree.command(name="dni", description="Crea tu cédula de identidad de Gran Chile RP")
+@app_commands.describe(
+    nombre           = "Tu nombre (en el RP)",
+    apellido         = "Tu apellido (en el RP)",
+    nombre_roblox    = "Tu nombre de usuario en Roblox",
+    fecha_nacimiento = "Tu fecha de nacimiento — formato DD/MM/AAAA",
+    sexo             = "Tu sexo",
+    tipo_sangre      = "Tu tipo de sangre",
+    ocupacion        = "Tu ocupación o profesión en el RP",
+    estado_civil     = "Tu estado civil",
+    pais             = "País de origen (en el RP)",
+    ciudad           = "Ciudad o localidad de origen (en el RP)"
+)
+@app_commands.choices(
+    sexo=[
+        app_commands.Choice(name="♂️ Masculino",   value="Masculino"),
+        app_commands.Choice(name="♀️ Femenino",    value="Femenino"),
+        app_commands.Choice(name="⚧️ No binario",  value="No binario"),
+    ],
+    tipo_sangre=[
+        app_commands.Choice(name="🩸 A+",   value="A+"),
+        app_commands.Choice(name="🩸 A-",   value="A-"),
+        app_commands.Choice(name="🩸 B+",   value="B+"),
+        app_commands.Choice(name="🩸 B-",   value="B-"),
+        app_commands.Choice(name="🩸 AB+",  value="AB+"),
+        app_commands.Choice(name="🩸 AB-",  value="AB-"),
+        app_commands.Choice(name="🩸 O+",   value="O+"),
+        app_commands.Choice(name="🩸 O-",   value="O-"),
+    ],
+    ocupacion=[
+        app_commands.Choice(name="👮 Carabinero",            value="Carabinero"),
+        app_commands.Choice(name="🕵️ Detective / PDI",      value="Detective / PDI"),
+        app_commands.Choice(name="🚑 Paramédico / SAMU",     value="Paramédico / SAMU"),
+        app_commands.Choice(name="🚒 Bombero",               value="Bombero"),
+        app_commands.Choice(name="⚖️ Abogado",               value="Abogado"),
+        app_commands.Choice(name="👨‍⚕️ Médico",               value="Médico"),
+        app_commands.Choice(name="🏦 Empresario",            value="Empresario"),
+        app_commands.Choice(name="🔧 Mecánico",              value="Mecánico"),
+        app_commands.Choice(name="🚖 Taxista",               value="Taxista"),
+        app_commands.Choice(name="🍳 Cocinero / Chef",       value="Cocinero / Chef"),
+        app_commands.Choice(name="🏗️ Obrero / Constructor",  value="Obrero / Constructor"),
+        app_commands.Choice(name="🎓 Estudiante",            value="Estudiante"),
+        app_commands.Choice(name="💼 Desempleado",           value="Desempleado"),
+        app_commands.Choice(name="🎭 Otros",                 value="Otros"),
+    ],
+    estado_civil=[
+        app_commands.Choice(name="💛 Soltero/a",    value="Soltero/a"),
+        app_commands.Choice(name="💍 Casado/a",     value="Casado/a"),
+        app_commands.Choice(name="💔 Divorciado/a", value="Divorciado/a"),
+        app_commands.Choice(name="🖤 Viudo/a",      value="Viudo/a"),
+    ]
+)
+async def dni(
+    interaction: discord.Interaction,
+    nombre: str,
+    apellido: str,
+    nombre_roblox: str,
+    fecha_nacimiento: str,
+    sexo: app_commands.Choice[str],
+    tipo_sangre: app_commands.Choice[str],
+    ocupacion: app_commands.Choice[str],
+    estado_civil: app_commands.Choice[str],
+    pais: str,
+    ciudad: str
+):
+    edad = calcular_edad(fecha_nacimiento)
+
+    if edad == "INVALIDA":
+        await interaction.response.send_message(
+            "❌ Fecha inválida. Usa el formato **DD/MM/AAAA** (ejemplo: 15/03/2000).",
+            ephemeral=True
+        )
+        return
+
+    rut           = generar_rut()
+    fecha_emision = datetime.datetime.now().strftime("%d/%m/%Y")
+
+    embed = discord.Embed(
+        title="🪪  CÉDULA DE IDENTIDAD — GRAN CHILE RP",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🇨🇱  **REPÚBLICA DE GRAN CHILE RP**\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=0xD52B1E,
+        timestamp=datetime.datetime.utcnow()
+    )
+
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.set_author(name="Gran Chile RP — Registro Civil", icon_url=LOGO_URL)
+
+    embed.add_field(name="👤 Nombre completo",     value=f"`{nombre} {apellido}`",      inline=True)
+    embed.add_field(name="🎮 Usuario Roblox",      value=f"`{nombre_roblox}`",           inline=True)
+    embed.add_field(name="🪪 RUT",                 value=f"`{rut}`",                     inline=True)
+
+    embed.add_field(name="⚧️ Sexo",                value=f"`{sexo.value}`",              inline=True)
+    embed.add_field(name="🩸 Tipo de sangre",      value=f"`{tipo_sangre.value}`",       inline=True)
+    embed.add_field(name="💼 Ocupación",           value=f"`{ocupacion.value}`",         inline=True)
+
+    embed.add_field(name="💍 Estado civil",        value=f"`{estado_civil.value}`",      inline=True)
+    embed.add_field(name="🌎 País de origen",      value=f"`{pais}`",                    inline=True)
+    embed.add_field(name="📍 Ciudad / Localidad",  value=f"`{ciudad}`",                  inline=True)
+
+    embed.add_field(name="🎂 Fecha de nacimiento", value=f"`{fecha_nacimiento}`",        inline=True)
+    embed.add_field(name="🔢 Edad",                value=f"`{edad} años`",               inline=True)
+    embed.add_field(name="📅 Fecha de emisión",    value=f"`{fecha_emision}`",           inline=True)
+
+    embed.add_field(
+        name="\u200b",
+        value=(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "✅ *Documento emitido por el Registro Civil de Gran Chile RP*\n"
+            "⚠️ *Este documento es válido únicamente dentro del servidor.*"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(
+        text=f"Solicitado por {interaction.user.display_name} • Gran Chile RP",
+        icon_url=interaction.user.display_avatar.url
+    )
+
+    await interaction.response.send_message(
+        content=(
+            f"🎉 ¡Bienvenido/a a **Gran Chile RP**, {nombre}!\n"
+            f"Tu cédula de identidad ha sido creada exitosamente. "
+            f"Recuerda portarla en todo momento dentro del servidor. 🇨🇱"
+        ),
+        embed=embed
+    )
+
+# ─────────────────────────────────────────────
+#  COMANDOS CLÁSICOS (PREFIX !)
+# ─────────────────────────────────────────────
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def sancionar(ctx, usuario: discord.Member, *, razon="No especificada"):
+    if usuario.id not in historial_sanciones:
+        historial_sanciones[usuario.id] = []
+    fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    historial_sanciones[usuario.id].append(f"⚠️ {razon} ({fecha})")
+    embed = discord.Embed(title="🚫 Jugador Sancionado", color=discord.Color.red())
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.add_field(name="👤 Usuario", value=usuario.mention, inline=True)
+    embed.add_field(name="📝 Razón",   value=razon,           inline=True)
+    embed.set_footer(text="Acción registrada en el historial • Gran Chile RP")
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def historial(ctx, usuario: discord.Member):
+    sanciones = historial_sanciones.get(usuario.id, [])
+    embed = discord.Embed(title=f"📋 Historial de {usuario.name}", color=discord.Color.blue())
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.description = "\n".join(sanciones) if sanciones else "✅ Este jugador está limpio. No tiene sanciones."
+    await ctx.send(embed=embed)
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def cerrar(ctx):
+    embed = discord.Embed(
+        title="🛑 SERVIDOR CERRADO",
+        description="El servidor de Gran Chile RP ha cerrado sus puertas por ahora.\n\n**Estado:** 🔴 Offline",
+        color=discord.Color.dark_red()
+    )
+    embed.set_thumbnail(url=LOGO_URL)
+    await ctx.send(embed=embed)
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def abrir(ctx):
+    embed = discord.Embed(
+        title="✅ SERVIDOR ABIERTO",
+        description="¡Ya puedes entrar a Gran Chile RP! Los esperamos a todos.\n\n**Estado:** 🟢 Online",
+        color=discord.Color.green()
+    )
+    embed.set_thumbnail(url=LOGO_URL)
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def encuesta(ctx, *, pregunta):
+    embed = discord.Embed(
+        title="📊 Nueva Encuesta",
+        description=f"**{pregunta}**\n\n✅ Reacciona para votar.",
+        color=discord.Color.gold(),
+        timestamp=datetime.datetime.utcnow()
+    )
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.set_footer(text=f"Enviada por {ctx.author.display_name} • Gran Chile RP")
+    mensaje = await ctx.send(embed=embed)
+    await mensaje.add_reaction("✅")
+    await mensaje.add_reaction("❌")
+
+# ─────────────────────────────────────────────
+#  MANEJO DE ERRORES
+# ─────────────────────────────────────────────
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ No tienes permisos para usar este comando.")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send("❌ Faltan argumentos. Revisa cómo usar el comando.")
+
+# ─────────────────────────────────────────────
+#  INICIO
+# ─────────────────────────────────────────────
+
 keep_alive()
-
-# ==========================================
-# 1. CONFIGURACIÓN DEL BOT
-# ==========================================
-class MyBot(commands.Bot):
-    def __init__(self):
-        # Usamos todos los privilegios para que no falte nada
-        super().__init__(command_prefix="!", intents=discord.Intents.all())
-
-    async def setup_hook(self):
-        await self.tree.sync()
-        print(f"Bot listo y sincronizado como {self.user}")
-
-bot = MyBot()
-tree = bot.tree
-
-# Base de datos temporal (Se borra si el bot se reinicia)
-antecedentes_db = {}
-
-# ==========================================
-# 2. COMANDOS DE IDENTIDAD (DNI)
-# ==========================================
-
-@tree.command(name="registrar_dni", description="Registrar un nuevo ciudadano")
-async def registrar_dni(interaction: discord.Interaction, nombre_rp: str, edad: int):
-    await interaction.response.send_message(f"✅ Se ha registrado el DNI de **{nombre_rp}**.", ephemeral=True)
-
-@tree.command(name="ver_dni", description="Ver cédula de identidad")
-async def ver_dni(interaction: discord.Interaction, ciudadano: discord.Member = None):
-    target = ciudadano or interaction.user
-    rut = f"{random.randint(10, 25)}.{random.randint(100, 999)}.{random.randint(100, 999)}-{random.randint(0, 9)}"
-    
-    embed = discord.Embed(title="🪪 CÉDULA DE IDENTIDAD - CHILE", color=discord.Color.blue())
-    embed.set_thumbnail(url=target.display_avatar.url)
-    embed.add_field(name="Nombre", value=f"{target.display_name}", inline=True)
-    embed.add_field(name="RUT", value=f"{rut}", inline=True)
-    embed.set_footer(text="Registro Civil Chile RP")
-    await interaction.response.send_message(embed=embed)
-
-# ==========================================
-# 3. SISTEMA POLICIAL (LÍNEA 74 CORREGIDA)
-# ==========================================
-
-@tree.command(name="fichar_sujeto", description="Agregar antecedentes penales")
-async def fichar_sujeto(interaction: discord.Interaction, ciudadano: discord.Member, delito: str):
-    user_id = str(ciudadano.id)
-    fecha = datetime.datetime.now().strftime("%d/%m/%Y")
-    entrada = f"• [{fecha}] {delito}\n"
-    
-    antecedentes_db[user_id] = antecedentes_db.get(user_id, "") + entrada
-    await interaction.response.send_message(f"🚓 Ficha actualizada para {ciudadano.mention}.")
-
-@tree.command(name="ver_antecedentes", description="Ver historial policial")
-async def ver_antecedentes(interaction: discord.Interaction, ciudadano: discord.Member):
-    user_id = str(ciudadano.id)
-    historial = antecedentes_db.get(user_id, "Sin antecedentes registrados.")
-    
-    embed = discord.Embed(title=f"📁 ARCHIVO POLICIAL: {ciudadano.name}", color=0xff0000)
-    
-    # Esto es lo que estaba roto: lo dejamos simple para que funcione
-    embed.add_field(name="Historial de Delitos", value=historial, inline=False)
-    
-    await interaction.response.send_message(embed=embed)
-
-# ==========================================
-# 4. COMANDOS DE ROL (ENTORNO Y OTROS)
-# ==========================================
-
-@tree.command(name="entorno", description="Enviar un aviso de entorno")
-async def entorno(interaction: discord.Interaction, suceso: str, lugar: str, tiempo: str):
-    # CORRECCIÓN ADICIONAL: Sin comillas triples para evitar fallos
-    embed = discord.Embed(title="🚨 AVISO DE ENTORNO", color=0x2b2d31)
-    embed.add_field(name="Suceso", value=suceso, inline=False)
-    embed.add_field(name="Lugar", value=lugar, inline=True)
-    embed.add_field(name="Hora/Tiempo", value=tiempo, inline=True)
-    embed.set_footer(text=f"Aviso por: {interaction.user.display_name}")
-    await interaction.response.send_message(embed=embed)
-
-@tree.command(name="realizar_ck", description="Registrar muerte permanente (CK)")
-async def realizar_ck(interaction: discord.Interaction, ciudadano: discord.Member, razon: str):
-    await interaction.response.send_message(f"💀 **CHARACTER KILL:** {ciudadano.mention} ha fallecido. Razón: {razon}")
-
-@tree.command(name="encuesta", description="Crear votación")
-async def encuesta(interaction: discord.Interaction, pregunta: str):
-    embed = discord.Embed(title="📊 ENCUESTA", description=pregunta, color=discord.Color.gold())
-    await interaction.response.send_message(embed=embed)
-    msg = await interaction.original_response()
-    await msg.add_reaction("✅")
-    await msg.add_reaction("❌")
-
-# ==========================================
-# 5. EJECUCIÓN (CORREGIDO)
-# ==========================================
-import os
-
-# Buscamos la variable que configuraste en Render
-token_bot = os.environ.get('TOKEN')
-
-if token_bot:
-    print("¡TOKEN encontrado! Iniciando sesión...")
-    bot.run(token_bot)
-else:
-    print("Error: No se encontró la variable 'TOKEN' en el panel de Render.")
+bot.run('TU_TOKEN_AQUÍ')  # <- Pon tu nuevo token aquí
