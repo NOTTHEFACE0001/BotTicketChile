@@ -288,6 +288,4 @@ async def on_command_error(ctx, error):
 # ─────────────────────────────────────────────
 
 keep_alive()
-bot.run('TU_TOKEN_AQUÍ')  # <- Pon tu nuevo token aquí  
-
 bot.run(os.environ.get('TOKEN'))
