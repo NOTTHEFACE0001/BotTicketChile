@@ -24,7 +24,7 @@ def keep_alive():
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-LOGO_URL = "https://i.imgur.com/XXXXXXX.png"  # <- Reemplaza con la URL real del logo
+LOGO_URL = "https://cdn.discordapp.com/attachments/1386117665889718392/1505025241813090434/WhatsApp_Image_2026-04-24_at_14.47.16-removebg-preview.png?ex=6a091f7b&is=6a07cdfb&hm=bc2cbacda598eb5f6d962736cf9911913fa4bc8a9a47e91bf595306f5094ffe0&"
 
 historial_sanciones = {}
 
@@ -68,6 +68,7 @@ async def on_ready():
     print(f'✅ Conectado como {bot.user.name}')
     await bot.change_presence(activity=discord.Game(name="Moderando Gran Chile RP 🇨🇱"))
     try:
+        await bot.tree.clear_commands(guild=None)
         synced = await bot.tree.sync()
         print(f"✅ {len(synced)} slash command(s) sincronizados.")
     except Exception as e:
