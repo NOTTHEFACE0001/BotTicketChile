@@ -69,6 +69,8 @@ async def on_ready():
     print(f'✅ Conectado como {bot.user.name}')
     await bot.change_presence(activity=discord.Game(name="Moderando Gran Chile RP 🇨🇱"))
     try:
+        # Nota: Al usar clear_commands() borras todo antes de sincronizar globales.
+        # Es ideal para limpiar errores viejos.
         await bot.tree.clear_commands(guild=None)
         synced = await bot.tree.sync()
         print(f"✅ {len(synced)} slash command(s) sincronizados.")
@@ -137,10 +139,10 @@ async def dni(
     apellido: str,
     nombre_roblox: str,
     fecha_nacimiento: str,
-    sexo: app_commands.Choice[str],
-    tipo_sangre: app_commands.Choice[str],
-    ocupacion: app_commands.Choice[str],
-    estado_civil: app_commands.Choice[str],
+    sexo: str,              # CORREGIDO: Cambiado de app_commands.Choice[str] a str
+    tipo_sangre: str,       # CORREGIDO
+    ocupacion: str,         # CORREGIDO
+    estado_civil: str,      # CORREGIDO
     pais: str,
     ciudad: str
 ):
@@ -172,17 +174,17 @@ async def dni(
 
     embed.add_field(name="👤 Nombre completo",     value=f"`{nombre} {apellido}`",      inline=True)
     embed.add_field(name="🎮 Usuario Roblox",      value=f"`{nombre_roblox}`",           inline=True)
-    embed.add_field(name="🪪 RUT",                 value=f"`{rut}`",                     inline=True)
+    embed.add_field(name="🪪 RUT",                  value=f"`{rut}`",                     inline=True)
 
-    embed.add_field(name="⚧️ Sexo",                value=f"`{sexo.value}`",              inline=True)
-    embed.add_field(name="🩸 Tipo de sangre",      value=f"`{tipo_sangre.value}`",       inline=True)
-    embed.add_field(name="💼 Ocupación",           value=f"`{ocupacion.value}`",         inline=True)
+    embed.add_field(name="⚧️ Sexo",                 value=f"`{sexo}`",              inline=True) # CORREGIDO: Sin .value
+    embed.add_field(name="🩸 Tipo de sangre",      value=f"`{tipo_sangre}`",       inline=True) # CORREGIDO
+    embed.add_field(name="💼 Ocupación",           value=f"`{ocupacion}`",         inline=True) # CORREGIDO
 
-    embed.add_field(name="💍 Estado civil",        value=f"`{estado_civil.value}`",      inline=True)
+    embed.add_field(name="💍 Estado civil",        value=f"`{estado_civil}`",      inline=True) # CORREGIDO
     embed.add_field(name="🌎 País de origen",      value=f"`{pais}`",                    inline=True)
     embed.add_field(name="📍 Ciudad / Localidad",  value=f"`{ciudad}`",                  inline=True)
 
-    embed.add_field(name="🎂 Fecha de nacimiento", value=f"`{fecha_nacimiento}`",        inline=True)
+    embed.add_field(name="🎂 Fecha de nacimiento", value=f"`{fecha_nacimiento}`",         inline=True)
     embed.add_field(name="🔢 Edad",                value=f"`{edad} años`",               inline=True)
     embed.add_field(name="📅 Fecha de emisión",    value=f"`{fecha_emision}`",           inline=True)
 
