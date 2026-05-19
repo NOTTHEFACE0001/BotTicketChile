@@ -61,7 +61,7 @@ def calcular_edad(fecha_nacimiento: str) -> str:
         return "INVALIDA"
 
 # ─────────────────────────────────────────────
-#  EVENTO ON_READY (SINCRONIZACIÓN TOTAL)
+#  EVENTO ON_READY (SINCRO INSTANTÁNEA POR SERVIDOR)
 # ─────────────────────────────────────────────
 
 @bot.event
@@ -69,17 +69,22 @@ async def on_ready():
     print(f'✅ Conectado como {bot.user.name}')
     await bot.change_presence(activity=discord.Game(name="Moderando Gran Chile RP 🇨🇱"))
     
+    # ID de tu servidor configurado para forzar la barra instantánea
+    ID_SERVIDOR = 1486083692089704619  
+
     try:
-        print("🔄 Limpiando comandos antiguos de la barra...")
-        # Esto borra los comandos de barra guardados localmente en los servidores
-        bot.tree.clear_commands(guild=None)
+        print(f"🔄 Sincronizando comandos de barra en el servidor {ID_SERVIDOR}...")
         
-        print("📡 Sincronizando nuevos comandos con Discord...")
-        # Esto sube el nuevo /dni con TODAS las opciones a la base de datos de Discord
-        synced = await bot.tree.sync()
-        print(f" Sustitución completada: {len(synced)} slash command(s) activos.")
+        # 1. Copiamos el comando /dni a este servidor específico
+        guild = discord.Object(id=ID_SERVIDOR)
+        bot.tree.copy_global_to(guild=guild)
+        
+        # 2. Sincronizamos la barra directo en este server sin esperar horas
+        synced = await bot.tree.sync(guild=guild)
+        
+        print(f"✅ ¡Listo! {len(synced)} slash command(s) activos en este servidor.")
     except Exception as e:
-        print(f"❌ Error crítico al sincronizar barra: {e}")
+        print(f"❌ Error al sincronizar barra: {e}")
 
 # ─────────────────────────────────────────────
 #  SLASH COMMAND: /dni (CON TODAS LAS OPCIONES)
