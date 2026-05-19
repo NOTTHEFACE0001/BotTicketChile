@@ -61,36 +61,40 @@ def calcular_edad(fecha_nacimiento: str) -> str:
         return "INVALIDA"
 
 # ─────────────────────────────────────────────
-#  EVENTO ON_READY
+#  EVENTO ON_READY (SINCRONIZACIÓN TOTAL)
 # ─────────────────────────────────────────────
 
 @bot.event
 async def on_ready():
     print(f'✅ Conectado como {bot.user.name}')
     await bot.change_presence(activity=discord.Game(name="Moderando Gran Chile RP 🇨🇱"))
+    
     try:
-        # Nota: Al usar clear_commands() borras todo antes de sincronizar globales.
-        # Es ideal para limpiar errores viejos.
-        await bot.tree.clear_commands(guild=None)
+        print("🔄 Limpiando comandos antiguos de la barra...")
+        # Esto borra los comandos de barra guardados localmente en los servidores
+        bot.tree.clear_commands(guild=None)
+        
+        print("📡 Sincronizando nuevos comandos con Discord...")
+        # Esto sube el nuevo /dni con TODAS las opciones a la base de datos de Discord
         synced = await bot.tree.sync()
-        print(f"✅ {len(synced)} slash command(s) sincronizados.")
+        print(f" Sustitución completada: {len(synced)} slash command(s) activos.")
     except Exception as e:
-        print(f"❌ Error al sincronizar: {e}")
+        print(f"❌ Error crítico al sincronizar barra: {e}")
 
 # ─────────────────────────────────────────────
-#  SLASH COMMAND: /dni
+#  SLASH COMMAND: /dni (CON TODAS LAS OPCIONES)
 # ─────────────────────────────────────────────
 
-@bot.tree.command(name="dni", description="Crea tu cédula de identidad de Gran Chile RP")
+@bot.tree.command(name="dni", description="Crea tu cédula de identidad de Gran Chile RP con opciones completas")
 @app_commands.describe(
     nombre           = "Tu nombre (en el RP)",
     apellido         = "Tu apellido (en el RP)",
     nombre_roblox    = "Tu nombre de usuario en Roblox",
     fecha_nacimiento = "Tu fecha de nacimiento — formato DD/MM/AAAA",
-    sexo             = "Tu sexo",
-    tipo_sangre      = "Tu tipo de sangre",
-    ocupacion        = "Tu ocupación o profesión en el RP",
-    estado_civil     = "Tu estado civil",
+    sexo             = "Selecciona tu sexo",
+    tipo_sangre      = "Selecciona tu tipo de sangre",
+    ocupacion        = "Selecciona tu ocupación en el RP",
+    estado_civil     = "Selecciona tu estado civil",
     pais             = "País de origen (en el RP)",
     ciudad           = "Ciudad o localidad de origen (en el RP)"
 )
@@ -139,10 +143,10 @@ async def dni(
     apellido: str,
     nombre_roblox: str,
     fecha_nacimiento: str,
-    sexo: str,              # CORREGIDO: Cambiado de app_commands.Choice[str] a str
-    tipo_sangre: str,       # CORREGIDO
-    ocupacion: str,         # CORREGIDO
-    estado_civil: str,      # CORREGIDO
+    sexo: str,              
+    tipo_sangre: str,       
+    ocupacion: str,         
+    estado_civil: str,      
     pais: str,
     ciudad: str
 ):
@@ -176,11 +180,11 @@ async def dni(
     embed.add_field(name="🎮 Usuario Roblox",      value=f"`{nombre_roblox}`",           inline=True)
     embed.add_field(name="🪪 RUT",                  value=f"`{rut}`",                     inline=True)
 
-    embed.add_field(name="⚧️ Sexo",                 value=f"`{sexo}`",              inline=True) # CORREGIDO: Sin .value
-    embed.add_field(name="🩸 Tipo de sangre",      value=f"`{tipo_sangre}`",       inline=True) # CORREGIDO
-    embed.add_field(name="💼 Ocupación",           value=f"`{ocupacion}`",         inline=True) # CORREGIDO
+    embed.add_field(name="⚧️ Sexo",                 value=f"`{sexo}`",                    inline=True) 
+    embed.add_field(name="🩸 Tipo de sangre",      value=f"`{tipo_sangre}`",             inline=True) 
+    embed.add_field(name="💼 Ocupación",           value=f"`{ocupacion}`",               inline=True) 
 
-    embed.add_field(name="💍 Estado civil",        value=f"`{estado_civil}`",      inline=True) # CORREGIDO
+    embed.add_field(name="💍 Estado civil",        value=f"`{estado_civil}`",            inline=True) 
     embed.add_field(name="🌎 País de origen",      value=f"`{pais}`",                    inline=True)
     embed.add_field(name="📍 Ciudad / Localidad",  value=f"`{ciudad}`",                  inline=True)
 
@@ -206,8 +210,7 @@ async def dni(
     await interaction.response.send_message(
         content=(
             f"🎉 ¡Bienvenido/a a **Gran Chile RP**, {nombre}!\n"
-            f"Tu cédula de identidad ha sido creada exitosamente. "
-            f"Recuerda portarla en todo momento dentro del servidor. 🇨🇱"
+            f"Tu cédula de identidad ha sido creada exitosamente. 🇨🇱"
         ),
         embed=embed
     )
@@ -286,7 +289,7 @@ async def on_command_error(ctx, error):
         await ctx.send("❌ Faltan argumentos. Revisa cómo usar el comando.")
 
 # ─────────────────────────────────────────────
-#  INICIO
+#  INICIO DEL BOT
 # ─────────────────────────────────────────────
 
 keep_alive()
