@@ -6,6 +6,7 @@ from flask import Flask
 from threading import Thread
 import datetime
 import random
+import json
 
 # --- CONFIGURACIÓN DEL MONITOR (KEEP ALIVE) ---
 app = Flask('')
@@ -29,8 +30,41 @@ LOGO_URL = "https://cdn.discordapp.com/attachments/1386117665889718392/150502524
 
 historial_sanciones = {}
 
+# Archivo local para almacenar los DNIs de forma permanente
+DB_FILE = "dnis.json"
+
 # ─────────────────────────────────────────────
-#  FUNCIONES AUXILIARES
+#  FUNCIONES DE BASE DE DATOS LOCAL
+# ─────────────────────────────────────────────
+
+def guardar_dni_db(user_id, datos):
+    try:
+        if os.path.exists(DB_FILE):
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                db = json.load(f)
+        else:
+            db = {}
+        
+        db[str(user_id)] = datos
+        
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(db, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"❌ Error al guardar DNI en archivo: {e}")
+
+def obtener_dni_db(user_id):
+    try:
+        if os.path.exists(DB_FILE):
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                db = json.load(f)
+                return db.get(str(user_id))
+        return None
+    except Exception as e:
+        print(f"❌ Error al leer DNI del archivo: {e}")
+        return None
+
+# ─────────────────────────────────────────────
+#  FUNCIONES AUXILIARES DEL DNI
 # ─────────────────────────────────────────────
 
 def generar_rut() -> str:
@@ -43,130 +77,20 @@ def calcular_dv(rut: int) -> str:
     factors = [2, 3, 4, 5, 6, 7]
     total = sum(d * factors[i % 6] for i, d in enumerate(reversed_digits))
     remainder = 11 - (total % 11)
-    if remainder == 11:
-        return "0"
-    elif remainder == 10:
-        return "K"
+    if remainder == 11: return "0"
+    elif remainder == 10: return "K"
     return str(remainder)
 
 def calcular_edad(fecha_nacimiento: str) -> str:
     try:
         nacimiento = datetime.datetime.strptime(fecha_nacimiento, "%d/%m/%Y")
         hoy = datetime.datetime.now()
-        edad = hoy.year - nacimiento.year - (
-            (hoy.month, hoy.day) < (nacimiento.month, nacimiento.day)
-        )
+        edad = hoy.year - nacimiento.year - ((hoy.month, hoy.day) < (nacimiento.month, nacimiento.day))
         return str(edad)
     except ValueError:
         return "INVALIDA"
 
-# ─────────────────────────────────────────────
-#  EVENTO ON_READY (SINCRO INSTANTÁNEA POR SERVIDOR)
-# ─────────────────────────────────────────────
-
-@bot.event
-async def on_ready():
-    print(f'✅ Conectado como {bot.user.name}')
-    await bot.change_presence(activity=discord.Game(name="Moderando Gran Chile RP 🇨🇱"))
-    
-    # ID de tu servidor configurado para forzar la barra instantánea
-    ID_SERVIDOR = 1486083692089704619  
-
-    try:
-        print(f"🔄 Sincronizando comandos de barra en el servidor {ID_SERVIDOR}...")
-        
-        # 1. Copiamos el comando /dni a este servidor específico
-        guild = discord.Object(id=ID_SERVIDOR)
-        bot.tree.copy_global_to(guild=guild)
-        
-        # 2. Sincronizamos la barra directo en este server sin esperar horas
-        synced = await bot.tree.sync(guild=guild)
-        
-        print(f"✅ ¡Listo! {len(synced)} slash command(s) activos en este servidor.")
-    except Exception as e:
-        print(f"❌ Error al sincronizar barra: {e}")
-
-# ─────────────────────────────────────────────
-#  SLASH COMMAND: /dni (CON TODAS LAS OPCIONES)
-# ─────────────────────────────────────────────
-
-@bot.tree.command(name="dni", description="Crea tu cédula de identidad de Gran Chile RP con opciones completas")
-@app_commands.describe(
-    nombre           = "Tu nombre (en el RP)",
-    apellido         = "Tu apellido (en el RP)",
-    nombre_roblox    = "Tu nombre de usuario en Roblox",
-    fecha_nacimiento = "Tu fecha de nacimiento — formato DD/MM/AAAA",
-    sexo             = "Selecciona tu sexo",
-    tipo_sangre      = "Selecciona tu tipo de sangre",
-    ocupacion        = "Selecciona tu ocupación en el RP",
-    estado_civil     = "Selecciona tu estado civil",
-    pais             = "País de origen (en el RP)",
-    ciudad           = "Ciudad o localidad de origen (en el RP)"
-)
-@app_commands.choices(
-    sexo=[
-        app_commands.Choice(name="♂️ Masculino",   value="Masculino"),
-        app_commands.Choice(name="♀️ Femenino",    value="Femenino"),
-        app_commands.Choice(name="⚧️ No binario",  value="No binario"),
-    ],
-    tipo_sangre=[
-        app_commands.Choice(name="🩸 A+",   value="A+"),
-        app_commands.Choice(name="🩸 A-",   value="A-"),
-        app_commands.Choice(name="🩸 B+",   value="B+"),
-        app_commands.Choice(name="🩸 B-",   value="B-"),
-        app_commands.Choice(name="🩸 AB+",  value="AB+"),
-        app_commands.Choice(name="🩸 AB-",  value="AB-"),
-        app_commands.Choice(name="🩸 O+",   value="O+"),
-        app_commands.Choice(name="🩸 O-",   value="O-"),
-    ],
-    ocupacion=[
-        app_commands.Choice(name="👮 Carabinero",            value="Carabinero"),
-        app_commands.Choice(name="🕵️ Detective / PDI",      value="Detective / PDI"),
-        app_commands.Choice(name="🚑 Paramédico / SAMU",     value="Paramédico / SAMU"),
-        app_commands.Choice(name="🚒 Bombero",               value="Bombero"),
-        app_commands.Choice(name="⚖️ Abogado",               value="Abogado"),
-        app_commands.Choice(name="👨‍⚕️ Médico",               value="Médico"),
-        app_commands.Choice(name="🏦 Empresario",            value="Empresario"),
-        app_commands.Choice(name="🔧 Mecánico",              value="Mecánico"),
-        app_commands.Choice(name="🚖 Taxista",               value="Taxista"),
-        app_commands.Choice(name="🍳 Cocinero / Chef",       value="Cocinero / Chef"),
-        app_commands.Choice(name="🏗️ Obrero / Constructor",  value="Obrero / Constructor"),
-        app_commands.Choice(name="🎓 Estudiante",            value="Estudiante"),
-        app_commands.Choice(name="💼 Desempleado",           value="Desempleado"),
-        app_commands.Choice(name="🎭 Otros",                 value="Otros"),
-    ],
-    estado_civil=[
-        app_commands.Choice(name="💛 Soltero/a",    value="Soltero/a"),
-        app_commands.Choice(name="💍 Casado/a",     value="Casado/a"),
-        app_commands.Choice(name="💔 Divorciado/a", value="Divorciado/a"),
-        app_commands.Choice(name="🖤 Viudo/a",      value="Viudo/a"),
-    ]
-)
-async def dni(
-    interaction: discord.Interaction,
-    nombre: str,
-    apellido: str,
-    nombre_roblox: str,
-    fecha_nacimiento: str,
-    sexo: str,              
-    tipo_sangre: str,       
-    ocupacion: str,         
-    estado_civil: str,      
-    pais: str,
-    ciudad: str
-):
-    edad = calcular_edad(fecha_nacimiento)
-
-    if edad == "INVALIDA":
-        await interaction.response.send_message(
-            "❌ Fecha inválida. Usa el formato **DD/MM/AAAA** (ejemplo: 15/03/2000).",
-            ephemeral=True
-        )
-        return
-
-    rut           = generar_rut()
-    fecha_emision = datetime.datetime.now().strftime("%d/%m/%Y")
-
+def construir_embed_dni(datos, usuario_nombre, avatar_url):
     embed = discord.Embed(
         title="🪪  CÉDULA DE IDENTIDAD — GRAN CHILE RP",
         description=(
@@ -177,25 +101,24 @@ async def dni(
         color=0xD52B1E,
         timestamp=datetime.datetime.utcnow()
     )
-
     embed.set_thumbnail(url=LOGO_URL)
     embed.set_author(name="Gran Chile RP — Registro Civil", icon_url=LOGO_URL)
 
-    embed.add_field(name="👤 Nombre completo",     value=f"`{nombre} {apellido}`",      inline=True)
-    embed.add_field(name="🎮 Usuario Roblox",      value=f"`{nombre_roblox}`",           inline=True)
-    embed.add_field(name="🪪 RUT",                  value=f"`{rut}`",                     inline=True)
+    embed.add_field(name="👤 Nombre completo",     value=f"`{datos['nombre']} {datos['apellido']}`",      inline=True)
+    embed.add_field(name="🎮 Usuario Roblox",      value=f"`{datos['nombre_roblox']}`",           inline=True)
+    embed.add_field(name="🪪 RUT",                  value=f"`{datos['rut']}`",                     inline=True)
 
-    embed.add_field(name="⚧️ Sexo",                 value=f"`{sexo}`",                    inline=True) 
-    embed.add_field(name="🩸 Tipo de sangre",      value=f"`{tipo_sangre}`",             inline=True) 
-    embed.add_field(name="💼 Ocupación",           value=f"`{ocupacion}`",               inline=True) 
+    embed.add_field(name="⚧️ Sexo",                 value=f"`{datos['sexo']}`",                    inline=True) 
+    embed.add_field(name="🩸 Tipo de sangre",      value=f"`{datos['tipo_sangre']}`",             inline=True) 
+    embed.add_field(name="💼 Ocupación",           value=f"`{datos['ocupacion']}`",               inline=True) 
 
-    embed.add_field(name="💍 Estado civil",        value=f"`{estado_civil}`",            inline=True) 
-    embed.add_field(name="🌎 País de origen",      value=f"`{pais}`",                    inline=True)
-    embed.add_field(name="📍 Ciudad / Localidad",  value=f"`{ciudad}`",                  inline=True)
+    embed.add_field(name="💍 Estado civil",        value=f"`{datos['estado_civil']}`",            inline=True) 
+    embed.add_field(name="🌎 País de origen",      value=f"`{datos['pais']}`",                    inline=True)
+    embed.add_field(name="📍 Ciudad / Localidad",  value=f"`{datos['ciudad']}`",                  inline=True)
 
-    embed.add_field(name="🎂 Fecha de nacimiento", value=f"`{fecha_nacimiento}`",         inline=True)
-    embed.add_field(name="🔢 Edad",                value=f"`{edad} años`",               inline=True)
-    embed.add_field(name="📅 Fecha de emisión",    value=f"`{fecha_emision}`",           inline=True)
+    embed.add_field(name="🎂 Fecha de nacimiento", value=f"`{datos['fecha_nacimiento']}`",         inline=True)
+    embed.add_field(name="🔢 Edad",                value=f"`{datos['edad']} años`",               inline=True)
+    embed.add_field(name="📅 Fecha de emisión",    value=f"`{datos['fecha_emision']}`",           inline=True)
 
     embed.add_field(
         name="\u200b",
@@ -206,96 +129,169 @@ async def dni(
         ),
         inline=False
     )
+    embed.set_footer(text=f"Cédula de {usuario_nombre} • Gran Chile RP", icon_url=avatar_url)
+    return embed
 
-    embed.set_footer(
-        text=f"Solicitado por {interaction.user.display_name} • Gran Chile RP",
-        icon_url=interaction.user.display_avatar.url
-    )
+# ─────────────────────────────────────────────
+#  EVENTO ON_READY (SINCRO TOTAL)
+# ─────────────────────────────────────────────
 
+@bot.event
+async def on_ready():
+    print(f'✅ Conectado como {bot.user.name}')
+    await bot.change_presence(activity=discord.Game(name="Moderando Gran Chile RP 🇨🇱"))
+    
+    ID_SERVIDOR = 1486083692089704619  
+
+    try:
+        print(f"🔄 Sincronizando todos los comandos Slash en el servidor {ID_SERVIDOR}...")
+        guild = discord.Object(id=ID_SERVIDOR)
+        bot.tree.copy_global_to(guild=guild)
+        synced = await bot.tree.sync(guild=guild)
+        print(f"✅ ¡Éxito! {len(synced)} comandos de barra activos.")
+    except Exception as e:
+        print(f"❌ Error al sincronizar barra: {e}")
+
+# ─────────────────────────────────────────────
+#  SLASH COMMANDS
+# ─────────────────────────────────────────────
+
+# 1. COMANDO /DNI (CREAR Y GUARDAR)
+@bot.tree.command(name="dni", description="Crea tu cédula de identidad de Gran Chile RP y regístrala")
+@app_commands.describe(
+    nombre="Tu nombre RP", apellido="Tu apellido RP", nombre_roblox="Usuario de Roblox",
+    fecha_nacimiento="DD/MM/AAAA", sexo="Sexo", tipo_sangre="Tipo de sangre",
+    ocupacion="Profesión", estado_civil="Estado civil", pais="País", ciudad="Ciudad"
+)
+@app_commands.choices(
+    sexo=[app_commands.Choice(name="♂️ Masculino", value="Masculino"), app_commands.Choice(name="♀️ Femenino", value="Femenino"), app_commands.Choice(name="⚧️ No binario", value="No binario")],
+    tipo_sangre=[
+        app_commands.Choice(name="🩸 A+", value="A+"), app_commands.Choice(name="🩸 A-", value="A-"),
+        app_commands.Choice(name="🩸 B+", value="B+"), app_commands.Choice(name="🩸 B-", value="B-"),
+        app_commands.Choice(name="🩸 AB+", value="AB+"), app_commands.Choice(name="🩸 AB-", value="AB-"),
+        app_commands.Choice(name="🩸 O+", value="O+"), app_commands.Choice(name="🩸 O-", value="O-")
+    ],
+    ocupacion=[
+        app_commands.Choice(name="👮 Carabinero", value="Carabinero"), app_commands.Choice(name="🕵️ PDI", value="Detective / PDI"),
+        app_commands.Choice(name="🚑 SAMU", value="Paramédico / SAMU"), app_commands.Choice(name="🚒 Bombero", value="Bombero"),
+        app_commands.Choice(name="⚖️ Abogado", value="Abogado"), app_commands.Choice(name="👨‍⚕️ Médico", value="Médico"),
+        app_commands.Choice(name="🏦 Empresario", value="Empresario"), app_commands.Choice(name="🔧 Mecánico", value="Mecánico"),
+        app_commands.Choice(name="🚖 Taxista", value="Taxista"), app_commands.Choice(name="🍳 Chef", value="Cocinero / Chef"),
+        app_commands.Choice(name="🏗️ Constructor", value="Obrero / Constructor"), app_commands.Choice(name="🎓 Estudiante", value="Estudiante"),
+        app_commands.Choice(name="💼 Desempleado", value="Desempleado"), app_commands.Choice(name="🎭 Otros", value="Otros")
+    ],
+    estado_civil=[
+        app_commands.Choice(name="💛 Soltero/a", value="Soltero/a"), app_commands.Choice(name="💍 Casado/a", value="Casado/a"),
+        app_commands.Choice(name="💔 Divorciado/a", value="Divorciado/a"), app_commands.Choice(name="🖤 Viudo/a", value="Viudo/a")
+    ]
+)
+async def dni(
+    interaction: discord.Interaction, nombre: str, apellido: str, nombre_roblox: str, fecha_nacimiento: str, 
+    sexo: str, tipo_sangre: str, ocupacion: str, estado_civil: str, pais: str, ciudad: str
+):
+    edad = calcular_edad(fecha_nacimiento)
+    if edad == "INVALIDA":
+        await interaction.response.send_message("❌ Fecha inválida. Usa el formato **DD/MM/AAAA**.", ephemeral=True)
+        return
+
+    rut = generar_rut()
+    fecha_emision = datetime.datetime.now().strftime("%d/%m/%Y")
+
+    # Guardamos los datos en un diccionario estructurado
+    datos_dni = {
+        "nombre": nombre, "apellido": apellido, "nombre_roblox": nombre_roblox,
+        "fecha_nacimiento": fecha_nacimiento, "edad": edad, "rut": rut,
+        "sexo": sexo, "tipo_sangre": tipo_sangre, "ocupacion": ocupacion,
+        "estado_civil": estado_civil, "pais": pais, "ciudad": ciudad,
+        "fecha_emision": fecha_emision
+    }
+
+    # Guardar permanentemente
+    guardar_dni_db(interaction.user.id, datos_dni)
+
+    embed = construir_embed_dni(datos_dni, interaction.user.display_name, interaction.user.display_avatar.url)
     await interaction.response.send_message(
-        content=(
-            f"🎉 ¡Bienvenido/a a **Gran Chile RP**, {nombre}!\n"
-            f"Tu cédula de identidad ha sido creada exitosamente. 🇨🇱"
-        ),
+        content=f"🎉 ¡Bienvenido/a a **Gran Chile RP**, {nombre}! Tu cédula ha sido creada y registrada en la base de datos.",
         embed=embed
     )
 
-# ─────────────────────────────────────────────
-#  COMANDOS CLÁSICOS (PREFIX !)
-# ─────────────────────────────────────────────
+# 2. NUEVO COMANDO /VER_DNI (MUESTRA EL DNI GUARDADO)
+@bot.tree.command(name="ver_dni", description="Muestra tu cédula de identidad registrada (o la de otro usuario)")
+@app_commands.describe(usuario="El miembro del que quieres ver el DNI (Opcional, si no pones nadie, verás el tuyo)")
+async def ver_dni(interaction: discord.Interaction, usuario: discord.Member = None):
+    # Si no selecciona usuario, se busca a sí mismo
+    usuario_objetivo = usuario if usuario else interaction.user
+    
+    datos = obtener_dni_db(usuario_objetivo.id)
+    
+    if not datos:
+        if usuario:
+            await interaction.response.send_message(f"❌ El usuario {usuario_objetivo.mention} aún no ha creado su DNI con `/dni`.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ No tienes ninguna cédula registrada. Crea una usando el comando `/dni`.", ephemeral=True)
+        return
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def sancionar(ctx, usuario: discord.Member, *, razon="No especificada"):
-    if usuario.id not in historial_sanciones:
-        historial_sanciones[usuario.id] = []
-    fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    embed = construir_embed_dni(datos, usuario_objetivo.display_name, usuario_objetivo.display_avatar.url)
+    await interaction.response.send_message(embed=embed)
+
+# 3. COMANDO /SANCIONAR
+@bot.tree.command(name="sancionar", description="Sanciona a un usuario por mal comportamiento")
+@app_commands.describe(usuario="El usuario a sancionar", razon="¿Por qué lo sancionas?")
+async def sancionar(interaction: discord.Interaction, usuario: discord.Member, razon: str):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Solo administradores pueden sancionar.", ephemeral=True)
+        return
+    if usuario.id not in historial_sanciones: historial_sanciones[usuario.id] = []
+    fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     historial_sanciones[usuario.id].append(f"⚠️ {razon} ({fecha})")
     embed = discord.Embed(title="🚫 Jugador Sancionado", color=discord.Color.red())
-    embed.set_thumbnail(url=LOGO_URL)
     embed.add_field(name="👤 Usuario", value=usuario.mention, inline=True)
-    embed.add_field(name="📝 Razón",   value=razon,           inline=True)
-    embed.set_footer(text="Acción registrada en el historial • Gran Chile RP")
-    await ctx.send(embed=embed)
+    embed.add_field(name="📝 Razón", value=razon, inline=True)
+    await interaction.response.send_message(embed=embed)
 
-@bot.command()
-async def historial(ctx, usuario: discord.Member):
+# 4. COMANDO /HISTORIAL
+@bot.tree.command(name="historial", description="Revisa el historial de sanciones de un usuario")
+@app_commands.describe(usuario="Usuario a revisar")
+async def historial(interaction: discord.Interaction, usuario: discord.Member):
     sanciones = historial_sanciones.get(usuario.id, [])
     embed = discord.Embed(title=f"📋 Historial de {usuario.name}", color=discord.Color.blue())
-    embed.set_thumbnail(url=LOGO_URL)
-    embed.description = "\n".join(sanciones) if sanciones else "✅ Este jugador está limpio. No tiene sanciones."
-    await ctx.send(embed=embed)
+    embed.description = "\n".join(sanciones) if sanciones else "✅ Este usuario no tiene sanciones."
+    embed.set_thumbnail(url=usuario.display_avatar.url)
+    await interaction.response.send_message(embed=embed)
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def cerrar(ctx):
-    embed = discord.Embed(
-        title="🛑 SERVIDOR CERRADO",
-        description="El servidor de Gran Chile RP ha cerrado sus puertas por ahora.\n\n**Estado:** 🔴 Offline",
-        color=discord.Color.dark_red()
-    )
+# 5. COMANDO /ABRIR
+@bot.tree.command(name="abrir", description="Anuncia que el servidor de RP está abierto")
+async def abrir(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Sin permisos.", ephemeral=True)
+        return
+    embed = discord.Embed(title="✅ SERVIDOR ABIERTO", description="¡Ya puedes entrar! Los esperamos.\n\n**Estado:** 🟢 Online", color=discord.Color.green())
     embed.set_thumbnail(url=LOGO_URL)
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def abrir(ctx):
-    embed = discord.Embed(
-        title="✅ SERVIDOR ABIERTO",
-        description="¡Ya puedes entrar a Gran Chile RP! Los esperamos a todos.\n\n**Estado:** 🟢 Online",
-        color=discord.Color.green()
-    )
+# 6. COMANDO /CERRAR
+@bot.tree.command(name="cerrar", description="Anuncia que el servidor de RP está cerrado")
+async def cerrar(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Sin permisos.", ephemeral=True)
+        return
+    embed = discord.Embed(title="🛑 SERVIDOR CERRADO", description="El servidor ha cerrado. Gracias por jugar.\n\n**Estado:** 🔴 Offline", color=discord.Color.dark_red())
     embed.set_thumbnail(url=LOGO_URL)
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
-@bot.command()
-async def encuesta(ctx, *, pregunta):
-    embed = discord.Embed(
-        title="📊 Nueva Encuesta",
-        description=f"**{pregunta}**\n\n✅ Reacciona para votar.",
-        color=discord.Color.gold(),
-        timestamp=datetime.datetime.utcnow()
-    )
-    embed.set_thumbnail(url=LOGO_URL)
-    embed.set_footer(text=f"Enviada por {ctx.author.display_name} • Gran Chile RP")
-    mensaje = await ctx.send(embed=embed)
+# 7. COMANDO /ENCUESTA
+@bot.tree.command(name="encuesta", description="Crea una votación rápida")
+@app_commands.describe(pregunta="¿Qué quieres preguntar?")
+async def encuesta(interaction: discord.Interaction, pregunta: str):
+    embed = discord.Embed(title="📊 Nueva Encuesta", description=f"**{pregunta}**\n\n✅ Sí | ❌ No", color=discord.Color.gold())
+    embed.set_footer(text=f"Por: {interaction.user.display_name}")
+    await interaction.response.send_message(embed=embed)
+    mensaje = await interaction.original_response()
     await mensaje.add_reaction("✅")
     await mensaje.add_reaction("❌")
 
 # ─────────────────────────────────────────────
-#  MANEJO DE ERRORES
+#  INICIO
 # ─────────────────────────────────────────────
-
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ No tienes permisos para usar este comando.")
-    elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("❌ Faltan argumentos. Revisa cómo usar el comando.")
-
-# ─────────────────────────────────────────────
-#  INICIO DEL BOT
-# ─────────────────────────────────────────────
-
 keep_alive()
 bot.run(os.environ.get('TOKEN'))
