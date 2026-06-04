@@ -259,36 +259,602 @@ async def historial(interaction: discord.Interaction, usuario: discord.Member):
     embed.set_thumbnail(url=usuario.display_avatar.url)
     await interaction.response.send_message(embed=embed)
 
-# 5. COMANDO /ABRIR
-@bot.tree.command(name="abrir", description="Anuncia que el servidor de RP está abierto")
-async def abrir(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Sin permisos.", ephemeral=True)
-        return
-    embed = discord.Embed(title="✅ SERVIDOR ABIERTO", description="¡Ya puedes entrar! Los esperamos.\n\n**Estado:** 🟢 Online", color=discord.Color.green())
-    embed.set_thumbnail(url=LOGO_URL)
-    await interaction.response.send_message(embed=embed)
+import discord
+from discord import app_commands
+from discord.ext import commands
+import json
+import os
+import uuid
+from datetime import datetime, timezone
 
-# 6. COMANDO /CERRAR
-@bot.tree.command(name="cerrar", description="Anuncia que el servidor de RP está cerrado")
-async def cerrar(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Sin permisos.", ephemeral=True)
-        return
-    embed = discord.Embed(title="🛑 SERVIDOR CERRADO", description="El servidor ha cerrado. Gracias por jugar.\n\n**Estado:** 🔴 Offline", color=discord.Color.dark_red())
-    embed.set_thumbnail(url=LOGO_URL)
-    await interaction.response.send_message(embed=embed)
+# ─────────────────────────────────────────────
+#  UTILIDADES DE BASE DE DATOS (JSON LOCAL)
+# ─────────────────────────────────────────────
 
-# 7. COMANDO /ENCUESTA
-@bot.tree.command(name="encuesta", description="Crea una votación rápida")
-@app_commands.describe(pregunta="¿Qué quieres preguntar?")
-async def encuesta(interaction: discord.Interaction, pregunta: str):
-    embed = discord.Embed(title="📊 Nueva Encuesta", description=f"**{pregunta}**\n\n✅ Sí | ❌ No", color=discord.Color.gold())
-    embed.set_footer(text=f"Por: {interaction.user.display_name}")
-    await interaction.response.send_message(embed=embed)
-    mensaje = await interaction.original_response()
-    await mensaje.add_reaction("✅")
-    await mensaje.add_reaction("❌")
+DB_PATH = "data/sanciones.json"
+
+def _cargar_db() -> dict:
+    if not os.path.exists(DB_PATH):
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        return {}
+    with open(DB_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def _guardar_db(data: dict):
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    with open(DB_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def _obtener_sanciones_usuario(guild_id: str, user_id: str) -> list:
+    db = _cargar_db()
+    return db.get(guild_id, {}).get(user_id, [])
+
+def _guardar_sancion(guild_id: str, user_id: str, sancion: dict):
+    db = _cargar_db()
+    db.setdefault(guild_id, {}).setdefault(user_id, []).append(sancion)
+    _guardar_db(db)
+
+def _actualizar_sancion(guild_id: str, user_id: str, sancion_id: str, cambios: dict) -> bool:
+    db = _cargar_db()
+    sanciones = db.get(guild_id, {}).get(user_id, [])
+    for s in sanciones:
+        if s["id"] == sancion_id:
+            s.update(cambios)
+            _guardar_db(db)
+            return True
+    return False
+
+def _eliminar_sancion(guild_id: str, user_id: str, sancion_id: str) -> bool:
+    db = _cargar_db()
+    sanciones = db.get(guild_id, {}).get(user_id, [])
+    nueva_lista = [s for s in sanciones if s["id"] != sancion_id]
+    if len(nueva_lista) == len(sanciones):
+        return False
+    db[guild_id][user_id] = nueva_lista
+    _guardar_db(db)
+    return True
+
+# ─────────────────────────────────────────────
+#  CONSTANTES Y HELPERS VISUALES
+# ─────────────────────────────────────────────
+
+TIPOS_SANCION = [
+    app_commands.Choice(name="⚠️  Advertencia",    value="advertencia"),
+    app_commands.Choice(name="🔇  Mute",            value="mute"),
+    app_commands.Choice(name="👢  Kick",            value="kick"),
+    app_commands.Choice(name="🔨  Ban",             value="ban"),
+    app_commands.Choice(name="⛔  Ban Permanente",  value="ban_permanente"),
+    app_commands.Choice(name="🚫  Blacklist",       value="blacklist"),
+    app_commands.Choice(name="📛  Sanción Leve",    value="sancion_leve"),
+    app_commands.Choice(name="🔴  Sanción Grave",   value="sancion_grave"),
+    app_commands.Choice(name="🛑  Sanción Máxima",  value="sancion_maxima"),
+]
+
+ESTADO_COLORES = {
+    "activa":   0xE74C3C,   # rojo
+    "apelada":  0xF39C12,   # naranja
+    "inactiva": 0x95A5A6,   # gris
+}
+
+TIPO_EMOJIS = {
+    "advertencia":   "⚠️",
+    "mute":          "🔇",
+    "kick":          "👢",
+    "ban":           "🔨",
+    "ban_permanente":"⛔",
+    "blacklist":     "🚫",
+    "sancion_leve":  "📛",
+    "sancion_grave": "🔴",
+    "sancion_maxima":"🛑",
+}
+
+TIPO_NOMBRES = {
+    "advertencia":   "Advertencia",
+    "mute":          "Mute",
+    "kick":          "Kick",
+    "ban":           "Ban",
+    "ban_permanente":"Ban Permanente",
+    "blacklist":     "Blacklist",
+    "sancion_leve":  "Sanción Leve",
+    "sancion_grave": "Sanción Grave",
+    "sancion_maxima":"Sanción Máxima",
+}
+
+def _timestamp_unix(dt_str: str) -> str:
+    """Convierte ISO string a timestamp Discord."""
+    try:
+        dt = datetime.fromisoformat(dt_str)
+        return f"<t:{int(dt.timestamp())}:R>"
+    except Exception:
+        return dt_str
+
+def _ahora_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+def _generar_id() -> str:
+    return str(uuid.uuid4())[:8].upper()
+
+# ─────────────────────────────────────────────
+#  COG PRINCIPAL
+# ─────────────────────────────────────────────
+
+class Sanciones(commands.Cog):
+    """Sistema completo de sanciones."""
+
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    # ══════════════════════════════════════════
+    #  /sancionar
+    # ══════════════════════════════════════════
+    @app_commands.command(
+        name="sancionar",
+        description="Aplica una sanción a un miembro del servidor."
+    )
+    @app_commands.describe(
+        usuario     = "Miembro a sancionar",
+        tipo        = "Tipo de sanción",
+        razon       = "Razón de la sanción",
+        duracion    = "Duración (ej: 1d, 3h, 7d) — opcional",
+        prueba      = "URL de imagen/evidencia — opcional",
+        notificar   = "¿Notificar al usuario por DM? (por defecto: Sí)",
+    )
+    @app_commands.choices(tipo=TIPOS_SANCION)
+    @app_commands.checks.has_permissions(moderate_members=True)
+    async def sancionar(
+        self,
+        interaction: discord.Interaction,
+        usuario: discord.Member,
+        tipo: app_commands.Choice[str],
+        razon: str,
+        duracion: str = None,
+        prueba: str = None,
+        notificar: bool = True,
+    ):
+        await interaction.response.defer(ephemeral=False)
+
+        # No se puede sancionar a staff con permisos mayores
+        if usuario.top_role >= interaction.user.top_role and interaction.user != interaction.guild.owner:
+            embed = discord.Embed(
+                description="❌ No puedes sancionar a alguien con un rol igual o superior al tuyo.",
+                color=0xE74C3C
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        sancion_id = _generar_id()
+        sancion = {
+            "id":          sancion_id,
+            "tipo":        tipo.value,
+            "razon":       razon,
+            "moderador_id": str(interaction.user.id),
+            "fecha":       _ahora_iso(),
+            "duracion":    duracion,
+            "prueba":      prueba,
+            "estado":      "activa",
+            "apelacion":   None,
+        }
+
+        _guardar_sancion(
+            str(interaction.guild_id),
+            str(usuario.id),
+            sancion
+        )
+
+        emoji = TIPO_EMOJIS.get(tipo.value, "🔴")
+        nombre_tipo = TIPO_NOMBRES.get(tipo.value, tipo.value)
+        total = len(_obtener_sanciones_usuario(str(interaction.guild_id), str(usuario.id)))
+
+        # ── Embed principal ──
+        embed = discord.Embed(
+            title=f"{emoji}  Sanción Aplicada",
+            color=ESTADO_COLORES["activa"],
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_author(
+            name=str(usuario),
+            icon_url=usuario.display_avatar.url
+        )
+        embed.add_field(name="👤 Usuario",       value=usuario.mention,                inline=True)
+        embed.add_field(name="🏷️ Tipo",          value=nombre_tipo,                    inline=True)
+        embed.add_field(name="🆔 ID Sanción",    value=f"`{sancion_id}`",              inline=True)
+        embed.add_field(name="📋 Razón",         value=razon,                          inline=False)
+        if duracion:
+            embed.add_field(name="⏱️ Duración",  value=duracion,                       inline=True)
+        embed.add_field(name="🛡️ Moderador",     value=interaction.user.mention,       inline=True)
+        embed.add_field(name="📊 Total Sanciones", value=f"`{total}`",                 inline=True)
+        if prueba:
+            embed.add_field(name="🔗 Evidencia", value=f"[Ver prueba]({prueba})",      inline=False)
+            if prueba.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+                embed.set_image(url=prueba)
+        embed.set_footer(text=f"Servidor: {interaction.guild.name}")
+
+        await interaction.followup.send(embed=embed)
+
+        # ── DM al usuario ──
+        if notificar:
+            try:
+                dm_embed = discord.Embed(
+                    title=f"{emoji}  Has recibido una sanción",
+                    description=f"Has sido sancionado en **{interaction.guild.name}**.",
+                    color=ESTADO_COLORES["activa"],
+                    timestamp=datetime.now(timezone.utc)
+                )
+                dm_embed.add_field(name="🏷️ Tipo",      value=nombre_tipo,  inline=True)
+                dm_embed.add_field(name="🆔 ID",         value=f"`{sancion_id}`", inline=True)
+                dm_embed.add_field(name="📋 Razón",      value=razon,        inline=False)
+                if duracion:
+                    dm_embed.add_field(name="⏱️ Duración", value=duracion,   inline=True)
+                dm_embed.set_footer(text="Si crees que es injusta, puedes apelarla con /apelar_sancion")
+                await usuario.send(embed=dm_embed)
+            except discord.Forbidden:
+                pass  # El usuario tiene DMs cerrados
+
+    # ══════════════════════════════════════════
+    #  /historial
+    # ══════════════════════════════════════════
+    @app_commands.command(
+        name="historial",
+        description="Muestra el historial de sanciones de un miembro."
+    )
+    @app_commands.describe(
+        usuario  = "Miembro a consultar",
+        pagina   = "Página del historial (por defecto: 1)",
+        filtro   = "Filtrar por tipo de sanción — opcional",
+        solo_activas = "Mostrar solo sanciones activas",
+    )
+    @app_commands.choices(filtro=TIPOS_SANCION)
+    @app_commands.checks.has_permissions(moderate_members=True)
+    async def historial(
+        self,
+        interaction: discord.Interaction,
+        usuario: discord.Member,
+        pagina: int = 1,
+        filtro: app_commands.Choice[str] = None,
+        solo_activas: bool = False,
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        sanciones = _obtener_sanciones_usuario(
+            str(interaction.guild_id),
+            str(usuario.id)
+        )
+
+        # Aplicar filtros
+        if filtro:
+            sanciones = [s for s in sanciones if s["tipo"] == filtro.value]
+        if solo_activas:
+            sanciones = [s for s in sanciones if s["estado"] == "activa"]
+
+        # Ordenar más reciente primero
+        sanciones = sorted(sanciones, key=lambda s: s["fecha"], reverse=True)
+
+        POR_PAGINA = 4
+        total = len(sanciones)
+        total_paginas = max(1, (total + POR_PAGINA - 1) // POR_PAGINA)
+        pagina = max(1, min(pagina, total_paginas))
+        inicio = (pagina - 1) * POR_PAGINA
+        pagina_items = sanciones[inicio:inicio + POR_PAGINA]
+
+        # Conteo por tipo
+        conteo = {}
+        for s in sanciones:
+            t = s["tipo"]
+            conteo[t] = conteo.get(t, 0) + 1
+
+        activas  = sum(1 for s in sanciones if s["estado"] == "activa")
+        apeladas = sum(1 for s in sanciones if s["estado"] == "apelada")
+
+        embed = discord.Embed(
+            title=f"📂  Historial de Sanciones",
+            color=0x2F3136,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_author(
+            name=f"{usuario} — {total} sanción(es) total",
+            icon_url=usuario.display_avatar.url
+        )
+
+        # Resumen rápido
+        resumen_lineas = []
+        for tipo, cant in conteo.items():
+            emoji = TIPO_EMOJIS.get(tipo, "•")
+            resumen_lineas.append(f"{emoji} {TIPO_NOMBRES.get(tipo, tipo)}: **{cant}**")
+        resumen = "\n".join(resumen_lineas) if resumen_lineas else "Sin registros."
+
+        embed.add_field(
+            name="📊 Resumen",
+            value=resumen,
+            inline=True
+        )
+        embed.add_field(
+            name="📌 Estado",
+            value=f"🔴 Activas: **{activas}**\n🟠 Apeladas: **{apeladas}**",
+            inline=True
+        )
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+        if not pagina_items:
+            embed.add_field(name="Sin resultados", value="No hay sanciones con ese filtro.", inline=False)
+        else:
+            for s in pagina_items:
+                emoji = TIPO_EMOJIS.get(s["tipo"], "🔴")
+                nombre_tipo = TIPO_NOMBRES.get(s["tipo"], s["tipo"])
+                estado = s.get("estado", "activa")
+
+                estado_badge = {
+                    "activa":   "🔴 Activa",
+                    "apelada":  "🟠 Apelada",
+                    "inactiva": "⚫ Inactiva",
+                }.get(estado, estado)
+
+                mod = f"<@{s['moderador_id']}>"
+                fecha_rel = _timestamp_unix(s["fecha"])
+                linea = (
+                    f"**Razón:** {s['razon']}\n"
+                    f"**Moderador:** {mod} · **Fecha:** {fecha_rel}\n"
+                    f"**Estado:** {estado_badge}"
+                )
+                if s.get("duracion"):
+                    linea += f" · **Duración:** {s['duracion']}"
+                if s.get("apelacion"):
+                    linea += f"\n**Apelación:** {s['apelacion']}"
+
+                embed.add_field(
+                    name=f"{emoji} [{s['id']}] {nombre_tipo}",
+                    value=linea,
+                    inline=False
+                )
+
+        embed.set_footer(text=f"Página {pagina}/{total_paginas} · {interaction.guild.name}")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ══════════════════════════════════════════
+    #  /apelar_sancion
+    # ══════════════════════════════════════════
+    @app_commands.command(
+        name="apelar_sancion",
+        description="Apela una sanción del historial (queda marcada como apelada, no se elimina)."
+    )
+    @app_commands.describe(
+        usuario     = "Miembro cuya sanción se apela",
+        sancion_id  = "ID de la sanción (ej: A1B2C3D4)",
+        motivo      = "Motivo de la apelación",
+    )
+    @app_commands.checks.has_permissions(moderate_members=True)
+    async def apelar_sancion(
+        self,
+        interaction: discord.Interaction,
+        usuario: discord.Member,
+        sancion_id: str,
+        motivo: str,
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        sancion_id = sancion_id.upper().strip()
+        sanciones = _obtener_sanciones_usuario(
+            str(interaction.guild_id),
+            str(usuario.id)
+        )
+        sancion = next((s for s in sanciones if s["id"] == sancion_id), None)
+
+        if not sancion:
+            embed = discord.Embed(
+                description=f"❌ No encontré la sanción `{sancion_id}` para ese usuario.",
+                color=0xE74C3C
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        if sancion["estado"] == "apelada":
+            embed = discord.Embed(
+                description=f"⚠️ La sanción `{sancion_id}` ya fue apelada anteriormente.",
+                color=0xF39C12
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        ok = _actualizar_sancion(
+            str(interaction.guild_id),
+            str(usuario.id),
+            sancion_id,
+            {
+                "estado":    "apelada",
+                "apelacion": motivo,
+                "apelado_por": str(interaction.user.id),
+                "fecha_apelacion": _ahora_iso(),
+            }
+        )
+
+        if not ok:
+            await interaction.followup.send("❌ Error al actualizar la sanción.", ephemeral=True)
+            return
+
+        emoji = TIPO_EMOJIS.get(sancion["tipo"], "🔴")
+        nombre_tipo = TIPO_NOMBRES.get(sancion["tipo"], sancion["tipo"])
+
+        embed = discord.Embed(
+            title="🟠  Sanción Apelada",
+            description="La sanción queda registrada en el historial como **apelada**.",
+            color=0xF39C12,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_author(name=str(usuario), icon_url=usuario.display_avatar.url)
+        embed.add_field(name="🆔 ID Sanción",  value=f"`{sancion_id}`",           inline=True)
+        embed.add_field(name="🏷️ Tipo",        value=f"{emoji} {nombre_tipo}",   inline=True)
+        embed.add_field(name="📋 Razón original", value=sancion["razon"],         inline=False)
+        embed.add_field(name="📝 Motivo apelación", value=motivo,                 inline=False)
+        embed.add_field(name="🛡️ Apelado por", value=interaction.user.mention,   inline=True)
+        embed.set_footer(text=f"Servidor: {interaction.guild.name}")
+
+        await interaction.followup.send(embed=embed)
+
+        # Notificar al usuario por DM
+        try:
+            dm_embed = discord.Embed(
+                title="🟠  Tu sanción ha sido apelada",
+                description=f"Una de tus sanciones en **{interaction.guild.name}** fue marcada como apelada.",
+                color=0xF39C12
+            )
+            dm_embed.add_field(name="🆔 ID",    value=f"`{sancion_id}`",    inline=True)
+            dm_embed.add_field(name="🏷️ Tipo",  value=nombre_tipo,          inline=True)
+            dm_embed.add_field(name="📝 Motivo",value=motivo,               inline=False)
+            await usuario.send(embed=dm_embed)
+        except discord.Forbidden:
+            pass
+
+    # ══════════════════════════════════════════
+    #  /borrar_sancion
+    # ══════════════════════════════════════════
+    @app_commands.command(
+        name="borrar_sancion",
+        description="Elimina permanentemente una sanción del historial de un miembro."
+    )
+    @app_commands.describe(
+        usuario    = "Miembro al que se le borra la sanción",
+        sancion_id = "ID de la sanción a eliminar (ej: A1B2C3D4)",
+        motivo     = "Razón para borrarla (queda en log interno)",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def borrar_sancion(
+        self,
+        interaction: discord.Interaction,
+        usuario: discord.Member,
+        sancion_id: str,
+        motivo: str,
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        sancion_id = sancion_id.upper().strip()
+        sanciones = _obtener_sanciones_usuario(
+            str(interaction.guild_id),
+            str(usuario.id)
+        )
+        sancion = next((s for s in sanciones if s["id"] == sancion_id), None)
+
+        if not sancion:
+            embed = discord.Embed(
+                description=f"❌ No encontré la sanción `{sancion_id}` para ese usuario.",
+                color=0xE74C3C
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        emoji = TIPO_EMOJIS.get(sancion["tipo"], "🔴")
+        nombre_tipo = TIPO_NOMBRES.get(sancion["tipo"], sancion["tipo"])
+
+        # Confirmación visual antes de borrar
+        confirm_embed = discord.Embed(
+            title="🗑️  Confirmar eliminación",
+            description=(
+                f"¿Seguro que quieres **borrar permanentemente** esta sanción?\n"
+                f"Esta acción **no se puede deshacer**."
+            ),
+            color=0xE74C3C
+        )
+        confirm_embed.add_field(name="🆔 ID",    value=f"`{sancion_id}`",          inline=True)
+        confirm_embed.add_field(name="🏷️ Tipo",  value=f"{emoji} {nombre_tipo}", inline=True)
+        confirm_embed.add_field(name="📋 Razón", value=sancion["razon"],           inline=False)
+        confirm_embed.add_field(name="📝 Motivo borrado", value=motivo,             inline=False)
+
+        # View con botones de confirmación
+        view = ConfirmarBorrado(
+            interaction=interaction,
+            guild_id=str(interaction.guild_id),
+            user_id=str(usuario.id),
+            sancion_id=sancion_id,
+            usuario=usuario,
+            sancion=sancion,
+            motivo=motivo,
+        )
+        await interaction.followup.send(embed=confirm_embed, view=view, ephemeral=True)
+
+    # ── Manejo de errores global para este Cog ──
+    async def cog_app_command_error(
+        self,
+        interaction: discord.Interaction,
+        error: app_commands.AppCommandError
+    ):
+        if isinstance(error, app_commands.MissingPermissions):
+            embed = discord.Embed(
+                description="❌ No tienes permisos para usar este comando.",
+                color=0xE74C3C
+            )
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            raise error
+
+
+# ─────────────────────────────────────────────
+#  VIEW: Confirmación de borrado
+# ─────────────────────────────────────────────
+
+class ConfirmarBorrado(discord.ui.View):
+    def __init__(self, interaction, guild_id, user_id, sancion_id, usuario, sancion, motivo):
+        super().__init__(timeout=30)
+        self.orig_interaction = interaction
+        self.guild_id  = guild_id
+        self.user_id   = user_id
+        self.sancion_id = sancion_id
+        self.usuario   = usuario
+        self.sancion   = sancion
+        self.motivo    = motivo
+
+    @discord.ui.button(label="Sí, eliminar", style=discord.ButtonStyle.danger, emoji="🗑️")
+    async def confirmar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.orig_interaction.user:
+            await interaction.response.send_message("No puedes usar este botón.", ephemeral=True)
+            return
+
+        ok = _eliminar_sancion(self.guild_id, self.user_id, self.sancion_id)
+        self.stop()
+        for item in self.children:
+            item.disabled = True
+
+        if ok:
+            emoji = TIPO_EMOJIS.get(self.sancion["tipo"], "🔴")
+            nombre_tipo = TIPO_NOMBRES.get(self.sancion["tipo"], self.sancion["tipo"])
+            embed = discord.Embed(
+                title="✅  Sanción Eliminada",
+                description="La sanción fue eliminada permanentemente del historial.",
+                color=0x2ECC71,
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.set_author(name=str(self.usuario), icon_url=self.usuario.display_avatar.url)
+            embed.add_field(name="🆔 ID",    value=f"`{self.sancion_id}`",         inline=True)
+            embed.add_field(name="🏷️ Tipo",  value=f"{emoji} {nombre_tipo}",     inline=True)
+            embed.add_field(name="📝 Motivo",value=self.motivo,                    inline=False)
+            embed.add_field(name="🛡️ Borrado por", value=interaction.user.mention, inline=True)
+            embed.set_footer(text=f"Servidor: {interaction.guild.name}")
+            await interaction.response.edit_message(embed=embed, view=self)
+        else:
+            await interaction.response.edit_message(
+                content="❌ No se pudo eliminar la sanción.", view=self
+            )
+
+    @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.secondary, emoji="✖️")
+    async def cancelar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.orig_interaction.user:
+            await interaction.response.send_message("No puedes usar este botón.", ephemeral=True)
+            return
+        self.stop()
+        for item in self.children:
+            item.disabled = True
+        embed = discord.Embed(description="❎ Operación cancelada.", color=0x95A5A6)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+# ─────────────────────────────────────────────
+#  SETUP (para cargar el cog en tu bot)
+# ─────────────────────────────────────────────
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Sanciones(bot))
+
+
 
 # ─────────────────────────────────────────────
 #  INICIO
