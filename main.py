@@ -628,6 +628,165 @@ async def borrar_sancion(
     await interaction.followup.send(embed=confirm_embed, view=view, ephemeral=True)
 
 # ─────────────────────────────────────────────
+#  MODAL — Redactar anuncio
+# ─────────────────────────────────────────────
+class ModalAnuncio(discord.ui.Modal):
+    def __init__(self, tipo: str, canal: discord.TextChannel, imagen_url: str | None, ping: str):
+        super().__init__(title="✍️  Redactar Anuncio")
+        self.tipo       = tipo
+        self.canal      = canal
+        self.imagen_url = imagen_url
+        self.ping       = ping
+
+        self.titulo_input = discord.ui.TextInput(
+            label="Título del anuncio",
+            placeholder="Ej: Nueva normativa de roleplay",
+            max_length=100,
+            required=True,
+        )
+        self.cuerpo_input = discord.ui.TextInput(
+            label="Contenido",
+            style=discord.TextStyle.paragraph,
+            placeholder="Escribe el mensaje completo aquí...",
+            max_length=3900,
+            required=True,
+        )
+        self.add_item(self.titulo_input)
+        self.add_item(self.cuerpo_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        TIPO_CONFIG = {
+            "informacion_general": {
+                "emoji": "📢", "color": 0x3498DB,
+                "label": "Información General",
+                "footer": "Gran Chile RP — Información",
+            },
+            "informacion_staff": {
+                "emoji": "🛡️", "color": 0x8E44AD,
+                "label": "Información para el Staff",
+                "footer": "Gran Chile RP — Staff Interno",
+            },
+            "normativa": {
+                "emoji": "📋", "color": 0xD52B1E,
+                "label": "Normativa Oficial",
+                "footer": "Gran Chile RP — Normativa",
+            },
+            "evento": {
+                "emoji": "🎉", "color": 0xF39C12,
+                "label": "Evento",
+                "footer": "Gran Chile RP — Eventos",
+            },
+            "actualizacion": {
+                "emoji": "🔧", "color": 0x2ECC71,
+                "label": "Actualización del Servidor",
+                "footer": "Gran Chile RP — Actualizaciones",
+            },
+            "alerta": {
+                "emoji": "⚠️", "color": 0xE74C3C,
+                "label": "Alerta Importante",
+                "footer": "Gran Chile RP — Alertas",
+            },
+            "economia": {
+                "emoji": "🏦", "color": 0x27AE60,
+                "label": "Economía — Banco Alianza Santander",
+                "footer": "Gran Chile RP — Economía",
+            },
+            "reclutamiento": {
+                "emoji": "📝", "color": 0x1ABC9C,
+                "label": "Reclutamiento de Staff",
+                "footer": "Gran Chile RP — Reclutamiento",
+            },
+        }
+
+        cfg = TIPO_CONFIG.get(self.tipo, TIPO_CONFIG["informacion_general"])
+
+        embed = discord.Embed(
+            title=f"{cfg['emoji']}  {self.titulo_input.value}",
+            description=self.cuerpo_input.value,
+            color=cfg["color"],
+            timestamp=datetime.datetime.now(timezone.utc)
+        )
+        embed.set_author(
+            name=f"Gran Chile RolePlay — {cfg['label']}",
+            icon_url=LOGO_URL
+        )
+        embed.set_thumbnail(url=LOGO_URL)
+        if self.imagen_url:
+            embed.set_image(url=self.imagen_url)
+        embed.set_footer(
+            text=f"{cfg['footer']} • Publicado por {interaction.user.display_name}",
+            icon_url=interaction.user.display_avatar.url
+        )
+
+        # Ping correspondiente
+        ping_texto = ""
+        if self.ping == "everyone":
+            ping_texto = "@everyone"
+        elif self.ping == "here":
+            ping_texto = "@here"
+        elif self.ping == "staff":
+            # Busca el rol staff por nombre (ajusta si se llama diferente)
+            rol_staff = discord.utils.get(interaction.guild.roles, name="Staff")
+            ping_texto = rol_staff.mention if rol_staff else ""
+        # Si es "ninguno" no se pone nada
+
+        await self.canal.send(content=ping_texto if ping_texto else None, embed=embed)
+
+        confirm = discord.Embed(
+            description=f"✅ Anuncio publicado en {self.canal.mention}",
+            color=0x2ECC71
+        )
+        await interaction.followup.send(embed=confirm, ephemeral=True)
+
+
+# ─────────────────────────────────────────────
+#  COMANDO — /anuncio
+# ─────────────────────────────────────────────
+@bot.tree.command(name="anuncio", description="Publica un anuncio oficial en el canal que elijas.")
+@app_commands.describe(
+    tipo    = "Tipo de anuncio",
+    canal   = "Canal donde se publicará",
+    ping    = "A quién mencionar",
+    imagen  = "URL de imagen para el anuncio (opcional)",
+)
+@app_commands.choices(
+    tipo=[
+        app_commands.Choice(name="📢  Información General",              value="informacion_general"),
+        app_commands.Choice(name="🛡️  Información para el Staff",        value="informacion_staff"),
+        app_commands.Choice(name="📋  Normativa Oficial",                value="normativa"),
+        app_commands.Choice(name="🎉  Evento",                           value="evento"),
+        app_commands.Choice(name="🔧  Actualización del Servidor",       value="actualizacion"),
+        app_commands.Choice(name="⚠️  Alerta Importante",                value="alerta"),
+        app_commands.Choice(name="🏦  Economía / Banco Alianza Santander", value="economia"),
+        app_commands.Choice(name="📝  Reclutamiento de Staff",           value="reclutamiento"),
+    ],
+    ping=[
+        app_commands.Choice(name="🔕  Sin mención",   value="ninguno"),
+        app_commands.Choice(name="📣  @everyone",     value="everyone"),
+        app_commands.Choice(name="🟢  @here",         value="here"),
+        app_commands.Choice(name="🛡️  @Staff",        value="staff"),
+    ],
+)
+@app_commands.checks.has_permissions(manage_messages=True)
+async def anuncio(
+    interaction: discord.Interaction,
+    tipo: app_commands.Choice[str],
+    canal: discord.TextChannel,
+    ping: app_commands.Choice[str],
+    imagen: str = None,
+):
+    modal = ModalAnuncio(
+        tipo=tipo.value,
+        canal=canal,
+        imagen_url=imagen,
+        ping=ping.value,
+    )
+    await interaction.response.send_modal(modal)
+
+
+# ─────────────────────────────────────────────
 #  INICIO
 # ─────────────────────────────────────────────
 keep_alive()
