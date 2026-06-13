@@ -8,23 +8,24 @@ import datetime
 import random
 import json
 import uuid
+import time
+import aiohttp
 from datetime import timezone
 
 # ─────────────────────────────────────────────
 #  KEEP ALIVE
 # ─────────────────────────────────────────────
-app = Flask('')
+flask_app = Flask('')
 
-@app.route('/')
+@flask_app.route('/')
 def home():
-    return "Bot de Gran Chile RP está en línea 🟢"
+    return "Bot Gran Chile RP está en línea 🟢"
 
-def run():
-    app.run(host='0.0.0.0', port=8080)
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-    t = Thread(target=run)
-    t.start()
+    Thread(target=run_flask, daemon=True).start()
 
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN DEL BOT
@@ -32,7 +33,53 @@ def keep_alive():
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-LOGO_URL = "https://cdn.discordapp.com/attachments/1386117665889718392/1505025241813090434/WhatsApp_Image_2026-04-24_at_14.47.16-removebg-preview.png?ex=6a091f7b&is=6a07cdfb&hm=bc2cbacda598eb5f6d962736cf9911913fa4bc8a9a47e91bf595306f5094ffe0&"
+LOGO_URL    = "https://cdn.discordapp.com/attachments/1386117665889718392/1505025241813090434/WhatsApp_Image_2026-04-24_at_14.47.16-removebg-preview.png"
+IMG_APERTURA = "https://cdn.discordapp.com/attachments/1497999534759084032/1503081674538221568/Captura_de_pantalla_2026-05-10_125245.jpg"
+IMG_CIERRE   = "https://cdn.discordapp.com/attachments/1497999534759084032/1503082415990636727/Captura_de_pantalla_2026-05-10_125631.jpg"
+IMG_ENCUESTA = "https://cdn.discordapp.com/attachments/1497999534759084032/1503084596177277080/Captura_de_pantalla_2026-05-07_211448.jpg"
+
+ID_SERVIDOR = 1486083692089704619
+
+# ─────────────────────────────────────────────
+#  ROBLOX API
+# ─────────────────────────────────────────────
+async def obtener_info_roblox(username: str) -> dict | None:
+    """
+    Busca el userId y el avatar bust/headshot del usuario de Roblox.
+    Devuelve dict con 'user_id', 'display_name' y 'avatar_url', o None si no existe.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            # 1. Buscar usuario por nombre
+            url_user = "https://users.roblox.com/v1/usernames/users"
+            payload  = {"usernames": [username], "excludeBannedUsers": False}
+            async with session.post(url_user, json=payload) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                users = data.get("data", [])
+                if not users:
+                    return None
+                user_id      = users[0]["id"]
+                display_name = users[0].get("displayName", username)
+
+            # 2. Obtener avatar bust (busto) para el DNI
+            url_avatar = (
+                f"https://thumbnails.roblox.com/v1/users/avatar-bust"
+                f"?userIds={user_id}&size=420x420&format=Png&isCircular=false"
+            )
+            async with session.get(url_avatar) as resp:
+                if resp.status != 200:
+                    return {"user_id": user_id, "display_name": display_name, "avatar_url": None}
+                thumb_data = await resp.json()
+                thumbs = thumb_data.get("data", [])
+                avatar_url = thumbs[0]["imageUrl"] if thumbs else None
+
+            return {"user_id": user_id, "display_name": display_name, "avatar_url": avatar_url}
+
+    except Exception as e:
+        print(f"❌ Error Roblox API: {e}")
+        return None
 
 # ─────────────────────────────────────────────
 #  BASE DE DATOS — DNI
@@ -131,7 +178,12 @@ def calcular_edad(fecha_nacimiento: str) -> str:
     except ValueError:
         return "INVALIDA"
 
-def construir_embed_dni(datos, usuario_nombre, avatar_url):
+def construir_embed_dni(datos, usuario_nombre, discord_avatar_url):
+    """
+    Construye el embed del DNI.
+    - Si hay avatar de Roblox, lo muestra como imagen principal (grande).
+    - El thumbnail es siempre el logo del servidor.
+    """
     embed = discord.Embed(
         title="🪪  CÉDULA DE IDENTIDAD — GRAN CHILE RP",
         description=(
@@ -142,20 +194,26 @@ def construir_embed_dni(datos, usuario_nombre, avatar_url):
         color=0xD52B1E,
         timestamp=datetime.datetime.utcnow()
     )
-    embed.set_thumbnail(url=LOGO_URL)
     embed.set_author(name="Gran Chile RP — Registro Civil", icon_url=LOGO_URL)
-    embed.add_field(name="👤 Nombre completo",    value=f"`{datos['nombre']} {datos['apellido']}`", inline=True)
-    embed.add_field(name="🎮 Usuario Roblox",     value=f"`{datos['nombre_roblox']}`",              inline=True)
-    embed.add_field(name="🪪 RUT",                 value=f"`{datos['rut']}`",                        inline=True)
-    embed.add_field(name="⚧️ Sexo",                value=f"`{datos['sexo']}`",                       inline=True)
-    embed.add_field(name="🩸 Tipo de sangre",     value=f"`{datos['tipo_sangre']}`",                inline=True)
-    embed.add_field(name="💼 Ocupación",          value=f"`{datos['ocupacion']}`",                  inline=True)
-    embed.add_field(name="💍 Estado civil",       value=f"`{datos['estado_civil']}`",               inline=True)
-    embed.add_field(name="🌎 País de origen",     value=f"`{datos['pais']}`",                       inline=True)
-    embed.add_field(name="📍 Ciudad / Localidad", value=f"`{datos['ciudad']}`",                     inline=True)
-    embed.add_field(name="🎂 Fecha de nacimiento",value=f"`{datos['fecha_nacimiento']}`",            inline=True)
-    embed.add_field(name="🔢 Edad",               value=f"`{datos['edad']} años`",                  inline=True)
-    embed.add_field(name="📅 Fecha de emisión",   value=f"`{datos['fecha_emision']}`",              inline=True)
+    embed.set_thumbnail(url=LOGO_URL)
+
+    # Avatar de Roblox como imagen grande si está disponible
+    if datos.get("roblox_avatar_url"):
+        embed.set_image(url=datos["roblox_avatar_url"])
+
+    embed.add_field(name="👤 Nombre completo",    value=f"`{datos['nombre']} {datos['apellido']}`",  inline=True)
+    embed.add_field(name="🎮 Usuario Roblox",     value=f"`{datos['nombre_roblox']}`",               inline=True)
+    embed.add_field(name="🆔 ID Roblox",          value=f"`{datos.get('roblox_id', 'N/A')}`",        inline=True)
+    embed.add_field(name="🪪 RUT",                value=f"`{datos['rut']}`",                         inline=True)
+    embed.add_field(name="⚧️ Sexo",               value=f"`{datos['sexo']}`",                        inline=True)
+    embed.add_field(name="🩸 Tipo de sangre",     value=f"`{datos['tipo_sangre']}`",                 inline=True)
+    embed.add_field(name="💼 Ocupación",          value=f"`{datos['ocupacion']}`",                   inline=True)
+    embed.add_field(name="💍 Estado civil",       value=f"`{datos['estado_civil']}`",                inline=True)
+    embed.add_field(name="🌎 País de origen",     value=f"`{datos['pais']}`",                        inline=True)
+    embed.add_field(name="📍 Ciudad / Localidad", value=f"`{datos['ciudad']}`",                      inline=True)
+    embed.add_field(name="🎂 Fecha de nacimiento",value=f"`{datos['fecha_nacimiento']}`",             inline=True)
+    embed.add_field(name="🔢 Edad",               value=f"`{datos['edad']} años`",                   inline=True)
+    embed.add_field(name="📅 Fecha de emisión",   value=f"`{datos['fecha_emision']}`",               inline=True)
     embed.add_field(
         name="\u200b",
         value=(
@@ -165,7 +223,10 @@ def construir_embed_dni(datos, usuario_nombre, avatar_url):
         ),
         inline=False
     )
-    embed.set_footer(text=f"Cédula de {usuario_nombre} • Gran Chile RP", icon_url=avatar_url)
+    embed.set_footer(
+        text=f"Cédula de {usuario_nombre} • Gran Chile RP",
+        icon_url=discord_avatar_url
+    )
     return embed
 
 # ─────────────────────────────────────────────
@@ -208,7 +269,7 @@ def _new_id() -> str:
     return str(uuid.uuid4())[:8].upper()
 
 # ─────────────────────────────────────────────
-#  VIEW — Confirmación borrado
+#  VIEW — Confirmación borrado sanción
 # ─────────────────────────────────────────────
 class ConfirmarBorrado(discord.ui.View):
     def __init__(self, interaction, guild_id, user_id, sancion_id, usuario, sancion, motivo):
@@ -240,10 +301,10 @@ class ConfirmarBorrado(discord.ui.View):
                 timestamp=datetime.datetime.now(timezone.utc)
             )
             embed.set_author(name=str(self.usuario), icon_url=self.usuario.display_avatar.url)
-            embed.add_field(name="🆔 ID",         value=f"`{self.sancion_id}`",        inline=True)
-            embed.add_field(name="🏷️ Tipo",       value=f"{emoji} {nombre_tipo}",     inline=True)
-            embed.add_field(name="📝 Motivo",      value=self.motivo,                  inline=False)
-            embed.add_field(name="🛡️ Borrado por", value=interaction.user.mention,     inline=True)
+            embed.add_field(name="🆔 ID",         value=f"`{self.sancion_id}`",       inline=True)
+            embed.add_field(name="🏷️ Tipo",       value=f"{emoji} {nombre_tipo}",    inline=True)
+            embed.add_field(name="📝 Motivo",      value=self.motivo,                 inline=False)
+            embed.add_field(name="🛡️ Borrado por", value=interaction.user.mention,    inline=True)
             embed.set_footer(text=f"Servidor: {interaction.guild.name}")
             await interaction.response.edit_message(embed=embed, view=self)
         else:
@@ -270,9 +331,7 @@ async def on_ready():
     print(f'✅ Conectado como {bot.user.name}')
     await bot.change_presence(activity=discord.Game(name="Moderando Gran Chile RP 🇨🇱"))
 
-    ID_SERVIDOR = 1486083692089704619
     guild = discord.Object(id=ID_SERVIDOR)
-
     try:
         print("🔄 Sincronizando comandos Slash...")
         bot.tree.copy_global_to(guild=guild)
@@ -281,14 +340,23 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Error al sincronizar: {e}")
 
-# ─────────────────────────────────────────────
+
+# ══════════════════════════════════════════════
 #  COMANDOS — DNI
-# ─────────────────────────────────────────────
-@bot.tree.command(name="dni", description="Crea tu cédula de identidad de Gran Chile RP y regístrala")
+# ══════════════════════════════════════════════
+
+@bot.tree.command(name="dni", description="Crea tu cédula de identidad de Gran Chile RP con foto de Roblox")
 @app_commands.describe(
-    nombre="Tu nombre RP", apellido="Tu apellido RP", nombre_roblox="Usuario de Roblox",
-    fecha_nacimiento="DD/MM/AAAA", sexo="Sexo", tipo_sangre="Tipo de sangre",
-    ocupacion="Profesión", estado_civil="Estado civil", pais="País", ciudad="Ciudad"
+    nombre="Tu nombre RP",
+    apellido="Tu apellido RP",
+    nombre_roblox="Tu usuario exacto de Roblox (se usará para traer tu avatar)",
+    fecha_nacimiento="Fecha de nacimiento en formato DD/MM/AAAA",
+    sexo="Sexo del personaje",
+    tipo_sangre="Tipo de sangre",
+    ocupacion="Profesión u ocupación",
+    estado_civil="Estado civil",
+    pais="País de origen",
+    ciudad="Ciudad o localidad"
 )
 @app_commands.choices(
     sexo=[
@@ -319,34 +387,93 @@ async def on_ready():
         app_commands.Choice(name="🎭 Otros",       value="Otros"),
     ],
     estado_civil=[
-        app_commands.Choice(name="💛 Soltero/a",   value="Soltero/a"),
-        app_commands.Choice(name="💍 Casado/a",    value="Casado/a"),
-        app_commands.Choice(name="💔 Divorciado/a",value="Divorciado/a"),
-        app_commands.Choice(name="🖤 Viudo/a",     value="Viudo/a"),
+        app_commands.Choice(name="💛 Soltero/a",    value="Soltero/a"),
+        app_commands.Choice(name="💍 Casado/a",     value="Casado/a"),
+        app_commands.Choice(name="💔 Divorciado/a", value="Divorciado/a"),
+        app_commands.Choice(name="🖤 Viudo/a",      value="Viudo/a"),
     ]
 )
 async def dni(
-    interaction: discord.Interaction, nombre: str, apellido: str, nombre_roblox: str,
-    fecha_nacimiento: str, sexo: str, tipo_sangre: str, ocupacion: str,
-    estado_civil: str, pais: str, ciudad: str
+    interaction: discord.Interaction,
+    nombre: str,
+    apellido: str,
+    nombre_roblox: str,
+    fecha_nacimiento: str,
+    sexo: str,
+    tipo_sangre: str,
+    ocupacion: str,
+    estado_civil: str,
+    pais: str,
+    ciudad: str
 ):
+    await interaction.response.defer()
+
     edad = calcular_edad(fecha_nacimiento)
     if edad == "INVALIDA":
-        await interaction.response.send_message("❌ Fecha inválida. Usa el formato **DD/MM/AAAA**.", ephemeral=True)
+        await interaction.followup.send("❌ Fecha inválida. Usa el formato **DD/MM/AAAA**.", ephemeral=True)
         return
+
+    # ── Buscar usuario en Roblox ──
+    await interaction.followup.send(
+        embed=discord.Embed(
+            description=f"🔍 Buscando tu perfil de Roblox como **{nombre_roblox}**...",
+            color=0x3498DB
+        ),
+        ephemeral=True
+    )
+
+    roblox_info = await obtener_info_roblox(nombre_roblox)
+
+    if roblox_info is None:
+        await interaction.edit_original_response(
+            embed=discord.Embed(
+                description=(
+                    f"⚠️ No encontré el usuario **{nombre_roblox}** en Roblox.\n"
+                    "Verifica que el nombre esté escrito exactamente igual (respeta mayúsculas).\n\n"
+                    "Se creará el DNI **sin foto de Roblox**."
+                ),
+                color=0xF39C12
+            )
+        )
+        roblox_id     = "N/A"
+        roblox_avatar = None
+    else:
+        roblox_id     = str(roblox_info["user_id"])
+        roblox_avatar = roblox_info["avatar_url"]
+        # Actualizar ephemeral a "encontrado"
+        await interaction.edit_original_response(
+            embed=discord.Embed(
+                description=f"✅ Perfil de Roblox encontrado: **{roblox_info['display_name']}** (ID: `{roblox_id}`)",
+                color=0x2ECC71
+            )
+        )
+
     datos_dni = {
-        "nombre": nombre, "apellido": apellido, "nombre_roblox": nombre_roblox,
-        "fecha_nacimiento": fecha_nacimiento, "edad": edad, "rut": generar_rut(),
-        "sexo": sexo, "tipo_sangre": tipo_sangre, "ocupacion": ocupacion,
-        "estado_civil": estado_civil, "pais": pais, "ciudad": ciudad,
-        "fecha_emision": datetime.datetime.now().strftime("%d/%m/%Y")
+        "nombre":          nombre,
+        "apellido":        apellido,
+        "nombre_roblox":   nombre_roblox,
+        "roblox_id":       roblox_id,
+        "roblox_avatar_url": roblox_avatar,
+        "fecha_nacimiento": fecha_nacimiento,
+        "edad":            edad,
+        "rut":             generar_rut(),
+        "sexo":            sexo,
+        "tipo_sangre":     tipo_sangre,
+        "ocupacion":       ocupacion,
+        "estado_civil":    estado_civil,
+        "pais":            pais,
+        "ciudad":          ciudad,
+        "fecha_emision":   datetime.datetime.now().strftime("%d/%m/%Y")
     }
+
     guardar_dni_db(interaction.user.id, datos_dni)
     embed = construir_embed_dni(datos_dni, interaction.user.display_name, interaction.user.display_avatar.url)
-    await interaction.response.send_message(
+
+    await interaction.channel.send(
         content=f"🎉 ¡Bienvenido/a a **Gran Chile RP**, {nombre}! Tu cédula ha sido creada y registrada.",
         embed=embed
     )
+
 
 @bot.tree.command(name="ver_dni", description="Muestra tu cédula de identidad registrada (o la de otro usuario)")
 @app_commands.describe(usuario="El miembro del que quieres ver el DNI (opcional)")
@@ -354,15 +481,52 @@ async def ver_dni(interaction: discord.Interaction, usuario: discord.Member = No
     objetivo = usuario if usuario else interaction.user
     datos = obtener_dni_db(objetivo.id)
     if not datos:
-        msg = f"❌ {objetivo.mention} aún no ha creado su DNI." if usuario else "❌ No tienes DNI. Usa `/dni` para crearlo."
+        msg = (
+            f"❌ {objetivo.mention} aún no ha creado su DNI."
+            if usuario else
+            "❌ No tienes DNI. Usa `/dni` para crearlo."
+        )
         await interaction.response.send_message(msg, ephemeral=True)
         return
     embed = construir_embed_dni(datos, objetivo.display_name, objetivo.display_avatar.url)
     await interaction.response.send_message(embed=embed)
 
-# ─────────────────────────────────────────────
+
+@bot.tree.command(name="actualizar_dni", description="Actualiza tu foto de Roblox si ya tienes DNI registrado")
+@app_commands.describe(nuevo_usuario_roblox="Nuevo nombre de usuario de Roblox")
+async def actualizar_dni(interaction: discord.Interaction, nuevo_usuario_roblox: str):
+    await interaction.response.defer(ephemeral=True)
+
+    datos = obtener_dni_db(interaction.user.id)
+    if not datos:
+        await interaction.followup.send("❌ No tienes DNI registrado. Usa `/dni` primero.", ephemeral=True)
+        return
+
+    roblox_info = await obtener_info_roblox(nuevo_usuario_roblox)
+    if roblox_info is None:
+        await interaction.followup.send(
+            f"❌ No encontré el usuario **{nuevo_usuario_roblox}** en Roblox. Verifica el nombre.",
+            ephemeral=True
+        )
+        return
+
+    datos["nombre_roblox"]    = nuevo_usuario_roblox
+    datos["roblox_id"]        = str(roblox_info["user_id"])
+    datos["roblox_avatar_url"]= roblox_info["avatar_url"]
+    guardar_dni_db(interaction.user.id, datos)
+
+    embed = construir_embed_dni(datos, interaction.user.display_name, interaction.user.display_avatar.url)
+    await interaction.followup.send(
+        content=f"✅ ¡DNI actualizado con el avatar de **{nuevo_usuario_roblox}**!",
+        embed=embed,
+        ephemeral=False
+    )
+
+
+# ══════════════════════════════════════════════
 #  COMANDOS — SANCIONES
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════
+
 @bot.tree.command(name="sancionar", description="Aplica una sanción a un miembro del servidor.")
 @app_commands.describe(
     usuario="Miembro a sancionar", tipo="Tipo de sanción", razon="Razón de la sanción",
@@ -385,7 +549,10 @@ async def sancionar(
 
     if usuario.top_role >= interaction.user.top_role and interaction.user != interaction.guild.owner:
         await interaction.followup.send(
-            embed=discord.Embed(description="❌ No puedes sancionar a alguien con un rol igual o superior al tuyo.", color=0xE74C3C),
+            embed=discord.Embed(
+                description="❌ No puedes sancionar a alguien con un rol igual o superior al tuyo.",
+                color=0xE74C3C
+            ),
             ephemeral=True
         )
         return
@@ -439,6 +606,7 @@ async def sancionar(
             await usuario.send(embed=dm)
         except discord.Forbidden:
             pass
+
 
 @bot.tree.command(name="historial", description="Muestra el historial de sanciones de un miembro.")
 @app_commands.describe(
@@ -515,6 +683,7 @@ async def historial(
     embed.set_footer(text=f"Página {pagina}/{total_pags} · {interaction.guild.name}")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
+
 @bot.tree.command(name="apelar_sancion", description="Apela una sanción (queda marcada como apelada, no se elimina).")
 @app_commands.describe(
     usuario="Miembro cuya sanción se apela",
@@ -535,14 +704,18 @@ async def apelar_sancion(
 
     if not sancion:
         await interaction.followup.send(
-            embed=discord.Embed(description=f"❌ No encontré la sanción `{sancion_id}` para ese usuario.", color=0xE74C3C),
-            ephemeral=True
+            embed=discord.Embed(
+                description=f"❌ No encontré la sanción `{sancion_id}` para ese usuario.",
+                color=0xE74C3C
+            ), ephemeral=True
         )
         return
     if sancion["estado"] == "apelada":
         await interaction.followup.send(
-            embed=discord.Embed(description=f"⚠️ La sanción `{sancion_id}` ya fue apelada.", color=0xF39C12),
-            ephemeral=True
+            embed=discord.Embed(
+                description=f"⚠️ La sanción `{sancion_id}` ya fue apelada.",
+                color=0xF39C12
+            ), ephemeral=True
         )
         return
 
@@ -561,11 +734,11 @@ async def apelar_sancion(
         timestamp=datetime.datetime.now(timezone.utc)
     )
     embed.set_author(name=str(usuario), icon_url=usuario.display_avatar.url)
-    embed.add_field(name="🆔 ID Sanción",       value=f"`{sancion_id}`",          inline=True)
-    embed.add_field(name="🏷️ Tipo",             value=f"{emoji} {nombre_tipo}",  inline=True)
-    embed.add_field(name="📋 Razón original",   value=sancion["razon"],           inline=False)
-    embed.add_field(name="📝 Motivo apelación", value=motivo,                     inline=False)
-    embed.add_field(name="🛡️ Apelado por",      value=interaction.user.mention,  inline=True)
+    embed.add_field(name="🆔 ID Sanción",       value=f"`{sancion_id}`",         inline=True)
+    embed.add_field(name="🏷️ Tipo",             value=f"{emoji} {nombre_tipo}", inline=True)
+    embed.add_field(name="📋 Razón original",   value=sancion["razon"],          inline=False)
+    embed.add_field(name="📝 Motivo apelación", value=motivo,                    inline=False)
+    embed.add_field(name="🛡️ Apelado por",      value=interaction.user.mention, inline=True)
     embed.set_footer(text=f"Servidor: {interaction.guild.name}")
     await interaction.followup.send(embed=embed)
 
@@ -581,6 +754,7 @@ async def apelar_sancion(
         await usuario.send(embed=dm)
     except discord.Forbidden:
         pass
+
 
 @bot.tree.command(name="borrar_sancion", description="Elimina permanentemente una sanción del historial.")
 @app_commands.describe(
@@ -602,8 +776,10 @@ async def borrar_sancion(
 
     if not sancion:
         await interaction.followup.send(
-            embed=discord.Embed(description=f"❌ No encontré la sanción `{sancion_id}`.", color=0xE74C3C),
-            ephemeral=True
+            embed=discord.Embed(
+                description=f"❌ No encontré la sanción `{sancion_id}`.",
+                color=0xE74C3C
+            ), ephemeral=True
         )
         return
 
@@ -612,13 +788,16 @@ async def borrar_sancion(
 
     confirm_embed = discord.Embed(
         title="🗑️  Confirmar eliminación",
-        description="¿Seguro que quieres **borrar permanentemente** esta sanción?\nEsta acción **no se puede deshacer**.",
+        description=(
+            "¿Seguro que quieres **borrar permanentemente** esta sanción?\n"
+            "Esta acción **no se puede deshacer**."
+        ),
         color=0xE74C3C
     )
-    confirm_embed.add_field(name="🆔 ID",    value=f"`{sancion_id}`",         inline=True)
-    confirm_embed.add_field(name="🏷️ Tipo",  value=f"{emoji} {nombre_tipo}", inline=True)
-    confirm_embed.add_field(name="📋 Razón", value=sancion["razon"],          inline=False)
-    confirm_embed.add_field(name="📝 Motivo borrado", value=motivo,           inline=False)
+    confirm_embed.add_field(name="🆔 ID",          value=f"`{sancion_id}`",        inline=True)
+    confirm_embed.add_field(name="🏷️ Tipo",        value=f"{emoji} {nombre_tipo}", inline=True)
+    confirm_embed.add_field(name="📋 Razón",       value=sancion["razon"],         inline=False)
+    confirm_embed.add_field(name="📝 Motivo borrado", value=motivo,                inline=False)
 
     view = ConfirmarBorrado(
         interaction=interaction, guild_id=str(interaction.guild_id),
@@ -627,18 +806,20 @@ async def borrar_sancion(
     )
     await interaction.followup.send(embed=confirm_embed, view=view, ephemeral=True)
 
-# ─────────────────────────────────────────────
-#  COMANDO — /anuncio
-# ─────────────────────────────────────────────
+
+# ══════════════════════════════════════════════
+#  COMANDOS — ANUNCIO
+# ══════════════════════════════════════════════
+
 TIPO_CONFIG_ANUNCIO = {
-    "informacion_general": {"emoji": "📢", "color": 0x3498DB, "label": "Información General",         "footer": "Gran Chile RP — Información"},
-    "informacion_staff":   {"emoji": "🛡️", "color": 0x8E44AD, "label": "Información para el Staff",   "footer": "Gran Chile RP — Staff Interno"},
-    "normativa":           {"emoji": "📋", "color": 0xD52B1E, "label": "Normativa Oficial",            "footer": "Gran Chile RP — Normativa"},
-    "evento":              {"emoji": "🎉", "color": 0xF39C12, "label": "Evento",                       "footer": "Gran Chile RP — Eventos"},
-    "actualizacion":       {"emoji": "🔧", "color": 0x2ECC71, "label": "Actualización del Servidor",   "footer": "Gran Chile RP — Actualizaciones"},
-    "alerta":              {"emoji": "⚠️", "color": 0xE74C3C, "label": "Alerta Importante",            "footer": "Gran Chile RP — Alertas"},
-    "economia":            {"emoji": "🏦", "color": 0x27AE60, "label": "Economía — Banco Alianza Santander", "footer": "Gran Chile RP — Economía"},
-    "reclutamiento":       {"emoji": "📝", "color": 0x1ABC9C, "label": "Reclutamiento de Staff",       "footer": "Gran Chile RP — Reclutamiento"},
+    "informacion_general": {"emoji": "📢", "color": 0x3498DB, "label": "Información General",              "footer": "Gran Chile RP — Información"},
+    "informacion_staff":   {"emoji": "🛡️", "color": 0x8E44AD, "label": "Información para el Staff",        "footer": "Gran Chile RP — Staff Interno"},
+    "normativa":           {"emoji": "📋", "color": 0xD52B1E, "label": "Normativa Oficial",                "footer": "Gran Chile RP — Normativa"},
+    "evento":              {"emoji": "🎉", "color": 0xF39C12, "label": "Evento",                           "footer": "Gran Chile RP — Eventos"},
+    "actualizacion":       {"emoji": "🔧", "color": 0x2ECC71, "label": "Actualización del Servidor",       "footer": "Gran Chile RP — Actualizaciones"},
+    "alerta":              {"emoji": "⚠️", "color": 0xE74C3C, "label": "Alerta Importante",                "footer": "Gran Chile RP — Alertas"},
+    "economia":            {"emoji": "🏦", "color": 0x27AE60, "label": "Economía — Banco Alianza Santander","footer": "Gran Chile RP — Economía"},
+    "reclutamiento":       {"emoji": "📝", "color": 0x1ABC9C, "label": "Reclutamiento de Staff",           "footer": "Gran Chile RP — Reclutamiento"},
 }
 
 @bot.tree.command(name="anuncio", description="Publica un anuncio oficial en el canal que elijas.")
@@ -703,7 +884,7 @@ async def anuncio(
     elif ping.value == "here":
         ping_texto = "@here"
     elif ping.value == "staff":
-        rol_staff = discord.utils.get(interaction.guild.roles, name="Staff")
+        rol_staff  = discord.utils.get(interaction.guild.roles, name="Staff")
         ping_texto = rol_staff.mention if rol_staff else None
 
     await canal.send(content=ping_texto, embed=embed)
@@ -713,8 +894,216 @@ async def anuncio(
     )
 
 
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════
+#  COMANDOS — SESIÓN (del bot de anuncios)
+# ══════════════════════════════════════════════
+
+@bot.tree.command(name="abrir_servidor", description="Anuncio oficial de apertura del servidor")
+@app_commands.describe(
+    horario_cierre="¿A qué hora cierra el servidor? (ej: 22:00)",
+    modo="Modo de roleplay de la sesión"
+)
+@app_commands.choices(modo=[
+    app_commands.Choice(name="🟢 Modo Normal",     value="🟢 Normal"),
+    app_commands.Choice(name="🟡 Modo Evento",     value="🟡 Evento Especial"),
+    app_commands.Choice(name="🔴 Modo Emergencia", value="🔴 Emergencia Activa"),
+])
+@app_commands.checks.has_permissions(manage_messages=True)
+async def abrir(interaction: discord.Interaction, horario_cierre: str, modo: str = "🟢 Normal"):
+    embed = discord.Embed(
+        title="✨ ¡SERVIDOR ABIERTO! ✨",
+        description="La sesión de roleplay ha comenzado oficialmente.\n¡Bienvenidos a **Gran Chile RP**! 🇨🇱",
+        color=0x2ecc71
+    )
+    embed.add_field(name="🆔 CÓDIGO",           value="`GCRPCM`",                          inline=True)
+    embed.add_field(name="🕒 CIERRE ESTIMADO",  value=f"**{horario_cierre}**",             inline=True)
+    embed.add_field(name="🎮 MODO DE SESIÓN",   value=modo,                                inline=True)
+    embed.add_field(name="🎙️ HOST DE SESIÓN",  value=interaction.user.mention,            inline=True)
+    embed.add_field(name="📅 FECHA",            value=f"<t:{int(time.time())}:D>",         inline=True)
+    embed.add_field(name="⏱️ INICIO",           value=f"<t:{int(time.time())}:t>",         inline=True)
+    embed.add_field(
+        name="📢 RECUERDA",
+        value=(
+            "▸ Sigue el reglamento en todo momento.\n"
+            "▸ Respeta a los demás jugadores.\n"
+            "▸ Mantén el rol activo y de calidad."
+        ),
+        inline=False
+    )
+    embed.set_image(url=IMG_APERTURA)
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.set_footer(text="GCRPCM System • Gran Chile RP", icon_url=LOGO_URL)
+
+    await interaction.response.send_message(content="@everyone", embed=embed)
+
+
+@bot.tree.command(name="cerrar_servidor", description="Anuncio oficial de cierre del servidor")
+@app_commands.describe(motivo="Motivo del cierre (opcional)")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def cerrar(interaction: discord.Interaction, motivo: str = "Fin de sesión normal."):
+    embed = discord.Embed(
+        title="⛔ SERVIDOR CERRADO ⛔",
+        description="La sesión de roleplay ha finalizado.\n¡Gracias por participar en **Gran Chile RP**! 🇨🇱",
+        color=0xe74c3c
+    )
+    embed.add_field(name="🌐 ESTADO",         value="🔴 OFFLINE",                  inline=True)
+    embed.add_field(name="⚒️ CERRADO POR",    value=interaction.user.mention,      inline=True)
+    embed.add_field(name="⏱️ HORA DE CIERRE", value=f"<t:{int(time.time())}:t>",  inline=True)
+    embed.add_field(name="📝 MOTIVO",         value=motivo,                        inline=False)
+    embed.add_field(
+        name="📌 INFO",
+        value="▸ Guardamos tu progreso automáticamente.\n▸ ¡Vuelve pronto para la próxima sesión!",
+        inline=False
+    )
+    embed.set_image(url=IMG_CIERRE)
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.set_footer(text="GCRPCM System • Gran Chile RP", icon_url=LOGO_URL)
+    await interaction.response.send_message(content="@everyone", embed=embed)
+
+
+@bot.tree.command(name="pausar_servidor", description="Pausa temporal la sesión")
+@app_commands.describe(
+    duracion="¿Cuánto dura la pausa? (ej: 15 minutos)",
+    motivo="¿Por qué se pausa?"
+)
+@app_commands.checks.has_permissions(manage_messages=True)
+async def pausar(interaction: discord.Interaction, duracion: str, motivo: str = "Descanso."):
+    embed = discord.Embed(
+        title="⏸️ SERVIDOR EN PAUSA",
+        description="La sesión ha sido pausada temporalmente.\nEsperamos reanudar pronto.",
+        color=0xf39c12
+    )
+    embed.add_field(name="⏱️ DURACIÓN ESTIMADA", value=f"**{duracion}**",         inline=True)
+    embed.add_field(name="📝 MOTIVO",             value=motivo,                   inline=True)
+    embed.add_field(name="🎙️ PAUSADO POR",        value=interaction.user.mention, inline=True)
+    embed.add_field(
+        name="💡 MIENTRAS TANTO",
+        value="▸ Puedes usar los canales de OOC.\n▸ No abandones el servidor.\n▸ Espera el aviso de reanudación.",
+        inline=False
+    )
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.set_footer(text="GCRPCM System • Gran Chile RP", icon_url=LOGO_URL)
+    await interaction.response.send_message(content="@everyone", embed=embed)
+
+
+@bot.tree.command(name="reanudar_servidor", description="Reanuda la sesión tras una pausa")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def reanudar(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="▶️ ¡SESIÓN REANUDADA!",
+        description="La pausa ha terminado.\n¡Volvemos al roleplay en **Gran Chile RP**! 🇨🇱",
+        color=0x1abc9c
+    )
+    embed.add_field(name="🕒 HORA DE REANUDACIÓN", value=f"<t:{int(time.time())}:t>", inline=True)
+    embed.add_field(name="🎙️ REANUDADO POR",       value=interaction.user.mention,    inline=True)
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.set_footer(text="GCRPCM System • Gran Chile RP", icon_url=LOGO_URL)
+    await interaction.response.send_message(content="@everyone", embed=embed)
+
+
+@bot.tree.command(name="emergencia", description="Alerta de emergencia o situación crítica en el rol")
+@app_commands.describe(
+    tipo="Tipo de emergencia",
+    descripcion="Descripción breve de la emergencia"
+)
+@app_commands.choices(tipo=[
+    app_commands.Choice(name="🚒 Incendio",             value="🚒 Incendio"),
+    app_commands.Choice(name="🚑 Emergencia Médica",    value="🚑 Emergencia Médica"),
+    app_commands.Choice(name="🚔 Persecución Policial", value="🚔 Persecución Policial"),
+    app_commands.Choice(name="💥 Desastre Natural",     value="💥 Desastre Natural"),
+    app_commands.Choice(name="⚠️ Alerta General",       value="⚠️ Alerta General"),
+])
+@app_commands.checks.has_permissions(manage_messages=True)
+async def emergencia(interaction: discord.Interaction, tipo: str, descripcion: str):
+    embed = discord.Embed(
+        title=f"🚨 EMERGENCIA ACTIVA — {tipo}",
+        description=f"**{descripcion}**",
+        color=0xff0000
+    )
+    embed.add_field(name="⏱️ HORA",          value=f"<t:{int(time.time())}:t>", inline=True)
+    embed.add_field(name="📣 REPORTADO POR", value=interaction.user.mention,    inline=True)
+    embed.add_field(
+        name="🆘 INSTRUCCIONES",
+        value=(
+            "▸ Todos los servicios de emergencia al lugar.\n"
+            "▸ Ciudadanos: manténganse alejados de la zona.\n"
+            "▸ Sigan las instrucciones de los oficiales."
+        ),
+        inline=False
+    )
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.set_footer(text="GCRPCM System • Gran Chile RP", icon_url=LOGO_URL)
+    await interaction.response.send_message(content="@everyone 🚨", embed=embed)
+
+
+@bot.tree.command(name="evento_especial", description="Anuncia un evento especial en el servidor")
+@app_commands.describe(
+    nombre="Nombre del evento",
+    descripcion="Descripción del evento",
+    hora="Hora del evento (ej: 20:00)",
+    premio="Premio o recompensa del evento (opcional)"
+)
+@app_commands.checks.has_permissions(manage_messages=True)
+async def evento(
+    interaction: discord.Interaction,
+    nombre: str,
+    descripcion: str,
+    hora: str,
+    premio: str = "Sin premio definido."
+):
+    embed = discord.Embed(
+        title=f"🎉 EVENTO ESPECIAL — {nombre}",
+        description=descripcion,
+        color=0x9b59b6
+    )
+    embed.add_field(name="🕒 HORA DEL EVENTO",     value=f"**{hora}**",              inline=True)
+    embed.add_field(name="📅 FECHA",               value=f"<t:{int(time.time())}:D>", inline=True)
+    embed.add_field(name="🎙️ ORGANIZADO POR",     value=interaction.user.mention,   inline=True)
+    embed.add_field(name="🏆 PREMIO / RECOMPENSA", value=premio,                     inline=False)
+    embed.add_field(
+        name="📌 PARTICIPA",
+        value="▸ Preséntate a tiempo.\n▸ Sigue las reglas del evento.\n▸ ¡Diviértete!",
+        inline=False
+    )
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.set_footer(text="GCRPCM System • Gran Chile RP", icon_url=LOGO_URL)
+
+    view = discord.ui.View()
+    view.add_item(discord.ui.Button(
+        label="✅ ¡Me anoto!",
+        style=discord.ButtonStyle.success,
+        custom_id="evento_anotarse",
+        disabled=True
+    ))
+    await interaction.response.send_message(content="@everyone 🎉", embed=embed, view=view)
+
+
+@bot.tree.command(name="votar_apertura", description="Votación para abrir sesión")
+@app_commands.describe(hora_propuesta="Hora propuesta para abrir (ej: 20:00)")
+async def votar(interaction: discord.Interaction, hora_propuesta: str = "Por definir"):
+    embed = discord.Embed(
+        title="📊 ¿ABRIMOS SESIÓN?",
+        description=(
+            f"**Hora propuesta:** `{hora_propuesta}`\n\n"
+            "Vota con las reacciones para que los hosts decidan.\n"
+            "✅ Sí, quiero jugar · ❌ No puedo hoy"
+        ),
+        color=0x3498db
+    )
+    embed.add_field(name="🎙️ PROPUESTO POR", value=interaction.user.mention, inline=True)
+    embed.add_field(name="🌐 SERVIDOR",       value="Gran Chile RP 🇨🇱",      inline=True)
+    embed.set_image(url=IMG_ENCUESTA)
+    embed.set_thumbnail(url=LOGO_URL)
+    embed.set_footer(text="GCRPCM System • Gran Chile RP", icon_url=LOGO_URL)
+
+    await interaction.response.send_message(embed=embed)
+    msg = await interaction.original_response()
+    await msg.add_reaction("✅")
+    await msg.add_reaction("❌")
+
+
+# ══════════════════════════════════════════════
 #  INICIO
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════
 keep_alive()
 bot.run(os.environ.get('TOKEN'))
